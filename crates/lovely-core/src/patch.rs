@@ -4,7 +4,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use once_cell::sync::Lazy;
-use regex_lite::Regex;
+use regex_cursor::engines::meta::Regex;
+use regex_cursor::{Input, IntoCursor, RopeyCursor};
+use ropey::Rope;
 use wildmatch::WildMatch;
 
 use crate::manifest::{CopyAt, CopyPatch, ModulePatch, PatternAt, PatternPatch};
@@ -32,73 +34,119 @@ fn set_cached_file(path: &PathBuf) -> &String {
 
 /// Apply valid var interpolations to the provided line.
 /// Interpolation targets are of form {{lovely:VAR_NAME}}.
-pub fn apply_var_interp(line: &mut String, vars: &HashMap<String, String>) {
-    // Cache the compiled regex.
-    let re: Lazy<Regex> = Lazy::new(|| Regex::new(r"\{\{lovely:(\w+)\}\}").unwrap());
+// pub fn apply_var_interp(line: &mut String, vars: &HashMap<String, String>) {
+//     // Cache the compiled regex.
+//     let re: Lazy<Regex> = Lazy::new(|| Regex::new(r"\{\{lovely:(\w+)\}\}").unwrap());
     
-    let line_copy = line.to_string();
-    let captures = re
-        .captures_iter(&line_copy).map(|x| x.extract());
+//     let line_copy = line.to_string();
+//     let captures = re
+//         .captures_iter(&line_copy).map(|x| x.extract());
 
-    for (cap, [var]) in captures {
-        let Some(val) = vars.get(var) else {
-            panic!("Failed to interpolate an unregistered variable '{var}'");
-        };
+//     for (cap, [var]) in captures {
+//         let Some(val) = vars.get(var) else {
+//             panic!("Failed to interpolate an unregistered variable '{var}'");
+//         };
 
-        // This clones the string each time, not efficient. A more efficient solution
-        // would be to use something like mem::take to interpolate the string in-place,
-        // but the complexity would not be worth the performance gain.
-        *line = line.replace(cap, val);
-    }
-}
+//         // This clones the string each time, not efficient. A more efficient solution
+//         // would be to use something like mem::take to interpolate the string in-place,
+//         // but the complexity would not be worth the performance gain.
+//         *line = line.replace(cap, val);
+//     }
+// }
 
 impl PatternPatch {
     /// Apply the pattern patch onto the provided line.
     /// The return value will be Option::Some when the given line was prepended or appended onto.
     /// The vec contains a series of lines that will be inserted in-place, replacing the provided line.
     /// If Option::None, the line itself may or may not have been mutated.
-    pub fn apply(&self, target: &str, line: &mut String) -> Option<(Vec<String>, Vec<String>)> {
-        let trimmed = line.trim();
-        let is_match = WildMatch::new(&self.pattern).matches(trimmed);
-
-        // Stop here if there's no match on this line.
-        if !is_match || self.target != target {
-            return None;
+    pub fn apply(&self, target: &str, buffer: &mut Rope) -> bool {
+        if self.target != target {
+            return false;
         }
 
-        // Determine the indent of the provided line. If an indent is not requested use an empty one.
-        let indent = if self.match_indent {
-            line.chars().take_while(|x| *x == ' ' || *x == '\t').collect::<String>()
-        } else {
-            String::new()
-        };
+        let input = Input::new(buffer.into_cursor());
+        let re = Regex::new(&self.pattern)
+            .unwrap_or_else(|e| panic!("Failed to compile Regex pattern '{}': {e:?}", self.pattern)); 
+        let matches = re.find_iter(input).collect::<Vec<_>>();
 
-        // If we're replacing *only* the provided line then we stop here, no need for added allocs.
-        if matches!(self.position, PatternAt::At) {
-            *line = format!("{indent}{}", self.payload);
-            return None;
+        if matches.is_empty() {
+            log::info!("Regex query '{}' on target '{target}' did not result in any matches", self.pattern);
+            return false;
         }
 
-        let mut payload_lines = self.payload.split('\n')
-            .map(|x| format!("{indent}{x}"))
-            .collect::<Vec<_>>();
+        for re_match in matches.into_iter() {
+            let start = buffer.byte_to_char(re_match.start());
+            let end = buffer.byte_to_char(re_match.end());
 
-        let mut before = vec![];
-        let mut after = vec![];
+            match self.position {
+                PatternAt::Before => {
+                    buffer.insert(start, &format!("\n{}", &self.payload));
+                }
 
-        // Insert the payload into position in the output vec either *before* or *after*
-        // the provided line.
-        match self.position {
-            PatternAt::Before => {
-                before.append(&mut payload_lines);
+                PatternAt::After => {
+                    buffer.insert(end + 1, &format!("{}\n", &self.payload));
+                }
+
+                PatternAt::At => {
+                    buffer.remove(start..end);
+                    buffer.insert(start, &self.payload)
+                }
             }
-            PatternAt::After => {
-                after.append(&mut payload_lines);
-            }
-            _ => unreachable!()
         }
 
-        Some((before, after))
+        true
+
+        // let trimmed = line.trim();
+        // let is_match = WildMatch::new(&self.pattern).matches(trimmed);
+
+        // // Stop here if there's no match on this line.
+        // if !is_match || self.target != target {
+        //     return None;
+        // }
+
+        // // Determine the indent of the provided line. If an indent is not requested use an empty one.
+        // let indent = if self.match_indent {
+        //     line.chars().take_while(|x| *x == ' ' || *x == '\t').collect::<String>()
+        // } else {
+        //     String::new()
+        // };
+
+        // // If we're replacing *only* the provided line then we stop here, no need for added allocs.
+        // if matches!(self.position, PatternAt::At) {
+        //     *line = format!("{indent}{}", self.payload);
+        //     return None;
+        // }
+
+        // let mut payload_lines = self.payload.split('\n')
+        //     .map(|x| format!("{indent}{x}"))
+        //     .collect::<Vec<_>>();
+
+        // let mut before = vec![];
+        // let mut after = vec![];
+
+        // // Insert the payload into position in the output vec either *before* or *after*
+        // // the provided line.
+        // match self.position {
+        //     PatternAt::Before => {
+        //         before.append(&mut payload_lines);
+        //     }
+        //     PatternAt::After => {
+        //         after.append(&mut payload_lines);
+        //     }
+        //     _ => unreachable!()
+        // }
+
+        // Some((before, after))
+    }
+
+    /// Apply a pattern patch onto the entire source file. This function assumes that the 
+    /// supplied pattern is valid regex.
+    /// The return value with be Option::Some if the pattern could be applied.
+    pub fn apply_multi(&self, target: &str, source: &str) -> Option<String> {
+        let re = Regex::new(&self.pattern)
+            .unwrap_or_else(|e| panic!("Failed to compile Regex pattern '{}': {e:?}", self.pattern));
+
+        None
     }
 }
 
@@ -108,7 +156,7 @@ impl CopyPatch {
     /// modify the buffer.
     /// If the name *is* a valid target of this patch, prepend or append the source file(s) contents
     /// and return true.
-    pub fn apply(&self, file_name: &str, buffer: &mut Vec<String>) -> bool {
+    pub fn apply(&self, file_name: &str, buffer: &mut Rope) -> bool {
         if self.target != file_name {
             return false;
         }
@@ -117,17 +165,15 @@ impl CopyPatch {
         // be made absolute by the patch loader.
         for source in self.sources.iter() {
             let contents = get_cached_file(source).unwrap_or(set_cached_file(source));
-            let mut lines = contents.lines().map(String::from).collect::<Vec<_>>();
 
             // Append or prepend the patch's lines onto the provided buffer.
             match self.position {
-                CopyAt::Append => buffer.append(&mut lines),
+                CopyAt::Append => buffer.append(Rope::from_str(contents)),
 
                 // This is horribly inefficient as it pushes the entire contents of the buffer onto
                 // the read lines, requiring huge allocations.
                 CopyAt::Prepend => {
-                    lines.append(buffer);
-                    *buffer = lines;
+                    buffer.insert(0, contents);
                 }
             }
         }

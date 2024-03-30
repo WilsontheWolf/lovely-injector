@@ -8,6 +8,7 @@ use log::*;
 
 use getargs::Options;
 use manifest::Patch;
+use ropey::Rope;
 use sha2::{Digest, Sha256};
 use sys::LuaState;
 
@@ -208,48 +209,58 @@ impl PatchTable {
             }
         }
 
+        let mut buffer = Rope::from_str(buffer);
+
         // Apply copy patches.
-        let mut lines = buffer.lines().map(String::from).collect::<Vec<_>>();
         for patch in copy_patches {
-            let result = patch.apply(target, &mut lines);
+            let result = patch.apply(target, &mut buffer);
             if result {
                 patch_count += 1;
             }
         }
 
-        // Allocate a new buffer. We'll fill this out as we apply line-based patches.
-        let mut new_buffer: Vec<String> = Vec::new();
-        for line in lines.iter_mut() {
-            let mut before_lines: Vec<String> = vec![];
-            let mut after_lines: Vec<String> = vec![];
-            let mut new_line = line.to_string();
-
-            // Apply pattern patches to each line.
-            for patch in &pattern_patches {
-                let patched = patch.apply(target, line);
-                new_line = line.to_string();
-
-                // Yes, we are nesting too much here.
-                if patched.is_none() {
-                    continue;
-                }
-
-                let (mut before, mut after) = patched.unwrap();
-                before_lines.append(&mut before);
-                after_lines.append(&mut after);
+        for patch in pattern_patches {
+            let result = patch.apply(target, &mut buffer);
+            if result {
+                patch_count += 1;
             }
-
-            new_buffer.append(&mut before_lines);
-            new_buffer.push(new_line);
-            new_buffer.append(&mut after_lines);
         }
+
+        // // Allocate a new buffer. We'll fill this out as we apply line-based patches.
+        // let mut new_buffer: Vec<String> = Vec::new();
+        // for line in lines.iter_mut() {
+        //     let mut before_lines: Vec<String> = vec![];
+        //     let mut after_lines: Vec<String> = vec![];
+        //     let mut new_line = line.to_string();
+
+        //     // Apply pattern patches to each line.
+        //     for patch in &pattern_patches {
+        //         let patched = patch.apply(target, line);
+        //         new_line = line.to_string();
+
+        //         // Yes, we are nesting too much here.
+        //         if patched.is_none() {
+        //             continue;
+        //         }
+
+        //         let (mut before, mut after) = patched.unwrap();
+        //         before_lines.append(&mut before);
+        //         after_lines.append(&mut after);
+        //     }
+
+        //     new_buffer.append(&mut before_lines);
+        //     new_buffer.push(new_line);
+        //     new_buffer.append(&mut after_lines);
+        // }
 
         // Apply variable interpolation.
-        for line in new_buffer.iter_mut() {
-            patch::apply_var_interp(line, &self.vars);
-        }
 
-        let patched = new_buffer.join("\n");
+        // for line in new_buffer.iter_mut() {
+        //     patch::apply_var_interp(line, &self.vars);
+        // }
+
+        // let patched = new_buffer.join("\n");
+        let patched = buffer.to_string();
         info!("[LOVELY] Applied {patch_count} patches to '{target}'");
         
         // Compute the integrity hash of the patched file.
