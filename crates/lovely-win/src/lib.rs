@@ -15,6 +15,14 @@ use windows::Win32::System::Console::AllocConsole;
 use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MESSAGEBOX_STYLE};
 
+use forward_dll::ForwardModule;
+
+#[derive(ForwardModule)]
+#[forward(target = "C:\\Windows\\System32\\version.dll")]
+pub struct VersionModule;
+
+const VERSION_LIB: VersionModule = VersionModule;
+
 static RUNTIME: OnceCell<Lovely> = OnceCell::new();
 
 static_detour! {
@@ -32,6 +40,8 @@ unsafe extern "system" fn DllMain(_: HINSTANCE, reason: u32, _: *const c_void) -
     if reason != 1 {
         return 1;
     }
+
+    VERSION_LIB.init().unwrap();
  
     panic::set_hook(Box::new(|x| unsafe {
         let message = format!("lovely-injector has crashed: \n{x}");
