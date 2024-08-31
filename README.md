@@ -1,4 +1,4 @@
-# Lovely is a runtime lua injector for LÖVE 2d
+# Lovely is a runtime lua injector for LÖVE 2d 
 
 Lovely is a lua injector which embeds code into a [LÖVE 2d](https://love2d.org/) game at runtime. Unlike executable patchers, mods can be installed, updated, and removed *over and over again* without requiring a partial or total game reinstallation. This is accomplished through in-process lua API detouring and an easy to use (and distribute) patch system.
 
