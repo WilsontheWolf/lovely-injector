@@ -22,6 +22,11 @@ pub static LUA_LIB: Lazy<Library> = Lazy::new(|| unsafe { Library::new("lua51.dl
 pub static LUA_LIB: Lazy<Library> =
     Lazy::new(|| unsafe { Library::new("../Frameworks/Lua.framework/Versions/A/Lua").unwrap() });
 
+#[cfg(target_os = "ios")]
+pub static LUA_LIB: Lazy<Library> =
+    // This doesn't work. Not sure what to do instead.
+    Lazy::new(|| unsafe { Library::new("./love").unwrap() });
+
 pub static lua_call: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize, isize)>> =
     Lazy::new(|| unsafe { LUA_LIB.get(b"lua_call").unwrap() });
 
