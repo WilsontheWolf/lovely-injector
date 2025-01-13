@@ -7,6 +7,7 @@ use libc::FILE;
 use libloading::{Library, Symbol};
 use log::info;
 use once_cell::sync::Lazy;
+use cty;
 
 pub const LUA_GLOBALSINDEX: isize = -10002;
 
@@ -15,63 +16,68 @@ pub const LUA_TBOOLEAN: isize = 1;
 
 pub type LuaState = c_void;
 
-#[cfg(target_os = "windows")]
-pub static LUA_LIB: Lazy<Library> = Lazy::new(|| unsafe { Library::new("lua51.dll").unwrap() });
+//extern "C" {
+    //#[link = 
+  //  pub fn MSFindSymbol(
+ //       image: *const cty::c_char, // Probably incorrect
+//        name: *const cty::c_char
+//    );
+//}
 
-#[cfg(target_os = "macos")]
-pub static LUA_LIB: Lazy<Library> =
-    Lazy::new(|| unsafe { Library::new("../Frameworks/Lua.framework/Versions/A/Lua").unwrap() });
+pub static SUBSTRATE: Lazy<Library> = Lazy::new(|| unsafe { Library::new("/opt/simject/usr/lib/libsubstrate.dylib").unwrap() }); 
+pub static ms_findsymbol: Lazy<Symbol<unsafe extern "C" fn(*mut std::ffi::c_void, *const char) -> *const std::ffi::c_void>> =
+Lazy::new(|| unsafe { SUBSTRATE.get(b"MSFindSymbol").unwrap() });
 
-#[cfg(target_os = "ios")]
-pub static LUA_LIB: Lazy<Library> =
-    // This doesn't work. Not sure what to do instead.
-    Lazy::new(|| unsafe { Library::new("./love").unwrap() });
+// Lazy::new(|| unsafe { std::mem::transmute(ms_findsymbol(core::ptr::null_mut(), CString::new("_").unwrap().as_ptr() as *const char))     });
+
+//pub static LUA_LIB: Lazy<Library> =
+//    Lazy::new(|| unsafe { Library::new("../Frameworks/Lua.framework/Versions/A/Lua").unwrap() });
 
 pub static lua_call: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize, isize)>> =
-    Lazy::new(|| unsafe { LUA_LIB.get(b"lua_call").unwrap() });
+Lazy::new(|| unsafe { std::mem::transmute(ms_findsymbol(core::ptr::null_mut(), CString::new("_lua_call").unwrap().as_ptr() as *const char)) });
 
 pub static lua_pcall: Lazy<
-    Symbol<unsafe extern "C" fn(*mut LuaState, isize, isize, isize) -> isize>,
-> = Lazy::new(|| unsafe { LUA_LIB.get(b"lua_pcall").unwrap() });
+Symbol<unsafe extern "C" fn(*mut LuaState, isize, isize, isize) -> isize>,
+> = Lazy::new(|| unsafe { std::mem::transmute(ms_findsymbol(core::ptr::null_mut(), CString::new("_lua_pcall").unwrap().as_ptr() as *const char)) });
 
 pub static lua_getfield: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize, *const char)>> =
-    Lazy::new(|| unsafe { LUA_LIB.get(b"lua_getfield").unwrap() });
+Lazy::new(|| unsafe { std::mem::transmute(ms_findsymbol(core::ptr::null_mut(), CString::new("_lua_getfield").unwrap().as_ptr() as *const char)) });
 
 pub static lua_setfield: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize, *const char)>> =
-    Lazy::new(|| unsafe { LUA_LIB.get(b"lua_setfield").unwrap() });
+Lazy::new(|| unsafe { std::mem::transmute(ms_findsymbol(core::ptr::null_mut(), CString::new("_lua_setfield").unwrap().as_ptr() as *const char)) });
 
 pub static lua_gettop: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState) -> isize>> =
-    Lazy::new(|| unsafe { LUA_LIB.get(b"lua_gettop").unwrap() });
+Lazy::new(|| unsafe { std::mem::transmute(ms_findsymbol(core::ptr::null_mut(), CString::new("_lua_gettop").unwrap().as_ptr() as *const char)) });
 
 pub static lua_settop: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> isize>> =
-    Lazy::new(|| unsafe { LUA_LIB.get(b"lua_settop").unwrap() });
+Lazy::new(|| unsafe { std::mem::transmute(ms_findsymbol(core::ptr::null_mut(), CString::new("_lua_settop").unwrap().as_ptr() as *const char)) });
 
 pub static lua_pushvalue: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize)>> =
-    Lazy::new(|| unsafe { LUA_LIB.get(b"lua_pushvalue").unwrap() });
+Lazy::new(|| unsafe { std::mem::transmute(ms_findsymbol(core::ptr::null_mut(), CString::new("_lua_pushvalue").unwrap().as_ptr() as *const char)) });
 
 pub static lua_pushcclosure: Lazy<
-    Symbol<unsafe extern "C" fn(*mut LuaState, *const c_void, isize)>,
-> = Lazy::new(|| unsafe { LUA_LIB.get(b"lua_pushcclosure").unwrap() });
+Symbol<unsafe extern "C" fn(*mut LuaState, *const c_void, isize)>,
+> = Lazy::new(|| unsafe { std::mem::transmute(ms_findsymbol(core::ptr::null_mut(), CString::new("_lua_pushcclosure").unwrap().as_ptr() as *const char)) });
 
 pub static lua_tolstring: Lazy<
-    Symbol<unsafe extern "C" fn(*mut LuaState, isize, *mut isize) -> *const char>,
-> = Lazy::new(|| unsafe { LUA_LIB.get(b"lua_tolstring").unwrap() });
+Symbol<unsafe extern "C" fn(*mut LuaState, isize, *mut isize) -> *const char>,
+> = Lazy::new(|| unsafe { std::mem::transmute(ms_findsymbol(core::ptr::null_mut(), CString::new("_lua_tolstring").unwrap().as_ptr() as *const char)) });
 
 pub static lua_toboolean: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> bool>> =
-    Lazy::new(|| unsafe { LUA_LIB.get(b"lua_toboolean").unwrap() });
+Lazy::new(|| unsafe { std::mem::transmute(ms_findsymbol(core::ptr::null_mut(), CString::new("_lua_toboolean").unwrap().as_ptr() as *const char)) });
 
 pub static lua_topointer: Lazy<
-    Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> *const c_void>,
-> = Lazy::new(|| unsafe { LUA_LIB.get(b"lua_topointer").unwrap() });
+Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> *const c_void>,
+> = Lazy::new(|| unsafe { std::mem::transmute(ms_findsymbol(core::ptr::null_mut(), CString::new("_lua_topointer").unwrap().as_ptr() as *const char)) });
 
 pub static lua_type: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> isize>> =
-    Lazy::new(|| unsafe { LUA_LIB.get(b"lua_type").unwrap() });
+Lazy::new(|| unsafe { std::mem::transmute(ms_findsymbol(core::ptr::null_mut(), CString::new("_lua_type").unwrap().as_ptr() as *const char)) });
 
 pub static lua_typename: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> *const char>> =
-    Lazy::new(|| unsafe { LUA_LIB.get(b"lua_typename").unwrap() });
+Lazy::new(|| unsafe { std::mem::transmute(ms_findsymbol(core::ptr::null_mut(), CString::new("_lua_typename").unwrap().as_ptr() as *const char)) });
 
 pub static lua_isstring: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> isize>> =
-    Lazy::new(|| unsafe { LUA_LIB.get(b"lua_isstring").unwrap() });
+Lazy::new(|| unsafe { std::mem::transmute(ms_findsymbol(core::ptr::null_mut(), CString::new("_lua_isstring").unwrap().as_ptr() as *const char)) });
 
 /// Load the provided buffer as a lua module with the specified name.
 /// # Safety
