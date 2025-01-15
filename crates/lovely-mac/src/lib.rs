@@ -62,17 +62,21 @@ unsafe fn construct() {
     }));
 
 
-    let rt = Lovely::init(&|a, b, c, d, e| RECALL(a, b, c, d, e));
-    RUNTIME
-        .set(rt)
-        .unwrap_or_else(|_| panic!("Failed to instantiate runtime."));
+    //let rt = Lovely::init(&|a, b, c, d, e| RECALL(a, b, c, d, e));
+    //RUNTIME
+    //    .set(rt)
+    //    .unwrap_or_else(|_| panic!("Failed to instantiate runtime."));
     log::info!("hi mom");
     //log::info!("{:?}", dlsym(RTLD_NEXT, CString::new("MSFindSymbol").unwrap().as_ptr() as *const i8));
     unsafe {
-        log::info!("{:?}", ms_findsymbol(core::ptr::null_mut(), CString::new("_luaL_loadbufferx").unwrap().as_ptr() as *const char));
-        ms_hookfunction(ms_findsymbol(core::ptr::null_mut(), CString::new("_luaL_loadbufferx").unwrap().as_ptr() as *const char),
-            std::mem::transmute(&luaL_loadbufferx),
+        let symbol = ms_findsymbol(core::ptr::null_mut(), CString::new("_luaL_loadbufferx").unwrap().as_ptr() as *const char);
+        //let new = std::mem::transmute(&luaL_loadbufferx);
+        //let new = luaL_loadbufferx;// as *const std::ffi::c_void;
+        let new: *const std::ffi::c_void = std::mem::transmute(luaL_loadbufferx as *const ());
+        log::info!("symbol: {:?} new: {:?}", symbol, new);
+        /*ms_hookfunction(symbol,
+            symbol,
             core::ptr::null_mut());
-
+        */
     };
 }
