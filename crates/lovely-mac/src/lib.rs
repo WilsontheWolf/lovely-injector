@@ -14,16 +14,13 @@ use std::panic;
 
 static RUNTIME: OnceCell<Lovely> = OnceCell::new();
 
-pub static SUBSTRATE: Lazy<Library> = Lazy::new(|| unsafe { Library::new("/opt/simject/usr/lib/libsubstrate.dylib").unwrap() }); 
+pub static SUBSTRATE: Lazy<Library> = Lazy::new(|| unsafe { Library::new("/usr/lib/libsubstrate.dylib").unwrap() }); 
 pub static ms_findsymbol: Lazy<Symbol<unsafe extern "C" fn(*mut std::ffi::c_void, *const char) -> *const std::ffi::c_void>> =
     Lazy::new(|| unsafe { SUBSTRATE.get(b"MSFindSymbol").unwrap() });
-pub static ms_hookfunction: Lazy<Symbol<unsafe extern "C" fn(*const std::ffi::c_void, *const std::ffi::c_void, *mut *mut std::ffi::c_void)>> =
+pub static ms_hookfunction: Lazy<Symbol<unsafe extern "C" fn(*const std::ffi::c_void, *const std::ffi::c_void, *mut unsafe extern "C" fn(*mut LuaState, *const u8, isize, *const u8, *const u8) -> u32)>> =
     Lazy::new(|| unsafe { SUBSTRATE.get(b"MSHookFunction").unwrap() });
 
 
-static RECALL: Lazy<
-unsafe extern "C" fn(*mut LuaState, *const u8, isize, *const u8, *const u8) -> u32,
-> = Lazy::new(|| unsafe { std::mem::transmute(ms_findsymbol(core::ptr::null_mut(), CString::new("_luaL_loadbufferx").unwrap().as_ptr() as *const char)) });
 
 #[no_mangle]
 #[allow(non_snake_case)]
@@ -53,6 +50,9 @@ unsafe extern "C" fn luaL_loadbufferx(
 }
 
 
+unsafe extern "C" fn RECALL(_: *mut LuaState, _: *const u8, _: isize, _: *const u8, _: *const u8) -> u32{
+    panic!("Running default RECALL function. This shouldn't happen");
+}
 
 #[ctor::ctor]
 unsafe fn construct() {
@@ -61,11 +61,11 @@ unsafe fn construct() {
         log::error!("{message}");
     }));
 
-
-    //let rt = Lovely::init(&|a, b, c, d, e| RECALL(a, b, c, d, e));
-    //RUNTIME
-    //    .set(rt)
-    //    .unwrap_or_else(|_| panic!("Failed to instantiate runtime."));
+    let mut orig = RECALL;
+    let rt = Lovely::init(&|a, b, c, d, e| orig(a, b, c, d, e));
+    RUNTIME
+        .set(rt)
+        .unwrap_or_else(|_| panic!("Failed to instantiate runtime."));
     log::info!("hi mom");
     //log::info!("{:?}", dlsym(RTLD_NEXT, CString::new("MSFindSymbol").unwrap().as_ptr() as *const i8));
     unsafe {
@@ -73,10 +73,11 @@ unsafe fn construct() {
         //let new = std::mem::transmute(&luaL_loadbufferx);
         //let new = luaL_loadbufferx;// as *const std::ffi::c_void;
         let new: *const std::ffi::c_void = std::mem::transmute(luaL_loadbufferx as *const ());
-        log::info!("symbol: {:?} new: {:?}", symbol, new);
-        /*ms_hookfunction(symbol,
-            symbol,
-            core::ptr::null_mut());
-        */
+        // let mut orig = std::mem::transmute(RECALL as *const());
+        log::info!("symbol: {:?} new: {:?}, orig: {:?}", symbol, new, orig as *const ());
+        ms_hookfunction(symbol,
+            new,
+            std::mem::transmute(&orig));
+        log::info!("symbol: {:?} new: {:?}, orig: {:?}", symbol, new, orig as *const ());
     };
 }

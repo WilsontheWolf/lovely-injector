@@ -24,7 +24,7 @@ pub type LuaState = c_void;
 //    );
 //}
 
-pub static SUBSTRATE: Lazy<Library> = Lazy::new(|| unsafe { Library::new("/opt/simject/usr/lib/libsubstrate.dylib").unwrap() }); 
+pub static SUBSTRATE: Lazy<Library> = Lazy::new(|| unsafe { Library::new("/usr/lib/libsubstrate.dylib").unwrap() }); 
 pub static ms_findsymbol: Lazy<Symbol<unsafe extern "C" fn(*mut std::ffi::c_void, *const char) -> *const std::ffi::c_void>> =
 Lazy::new(|| unsafe { SUBSTRATE.get(b"MSFindSymbol").unwrap() });
 
