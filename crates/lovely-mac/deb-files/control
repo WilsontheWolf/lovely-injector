@@ -1,0 +1,11 @@
+Package: systems.shorty.lovely-injector
+Name: Lovely Injector
+Description: A runtime lua injector for games built with LÖVE 
+Maintainer: WilsontheWolf
+Author: WilsontheWolf, Metherul
+Section: Tweaks
+Depends: mobilesubstrate (>= 0.9.5000)
+Icon: https://repo.shorty.systems/icons/systems.shorty.lovely-injector.png
+Depiction: https://repo.shorty.systems/depictions/web/systems.shorty.lovely-injector
+SileoDepiction: https://repo.shorty.systems/depictions/sileo/systems.shorty.lovely-injector
+
