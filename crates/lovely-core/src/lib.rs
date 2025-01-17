@@ -60,6 +60,8 @@ impl Lovely {
                 .strip_suffix(".app")
                 .expect("Parent directory of current executable path was not an .app")
                 .replace(".", "_")
+        } else if env::consts::OS == "ios" {
+            "game".to_string() // TODO: is there a better way to do this??
         } else {
             cur_exe
                 .file_stem()

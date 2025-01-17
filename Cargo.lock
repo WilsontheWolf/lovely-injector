@@ -401,6 +401,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lovely-ios"
+version = "0.1.0"
+dependencies = [
+ "ctor",
+ "lovely-core",
+ "once_cell",
+]
+
+[[package]]
 name = "lovely-unix"
 version = "0.1.0"
 dependencies = [
