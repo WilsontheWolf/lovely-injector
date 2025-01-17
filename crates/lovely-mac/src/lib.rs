@@ -87,10 +87,22 @@ unsafe fn construct() {
         //let new = luaL_loadbufferx;// as *const std::ffi::c_void;
         let new: *const std::ffi::c_void = std::mem::transmute(luaL_loadbuffer as *const ());
         //let orig = &mut std::mem::transmute(RECALL as *const());
-        log::info!("symbol: {:?} new: {:?}, RECALL: {:?}, orig: {:?}", symbol, new, ORIG as *const(), orig_ptr);
+        log::info!("normal: symbol: {:?} new: {:?}, RECALL: {:?}, orig: {:?}", symbol, new, ORIG as *const(), orig_ptr);
         MSHookFunction(symbol,
             new,
             &mut orig_ptr as *mut usize as _);
-        log::info!("symbol: {:?} new: {:?}, RECALL: {:?}, orig: {:?}", symbol, new, ORIG as *const(), orig_ptr);
+        log::info!("normal: symbol: {:?} new: {:?}, RECALL: {:?}, orig: {:?}", symbol, new, ORIG as *const(), orig_ptr);
+    };
+    unsafe {
+        let symbol = MSFindSymbol(core::ptr::null_mut(), CString::new("_luaL_loadbufferx").unwrap().as_ptr() as *const char);
+        //let new = std::mem::transmute(&luaL_loadbufferx);
+        //let new = luaL_loadbufferx;// as *const std::ffi::c_void;
+        let new: *const std::ffi::c_void = std::mem::transmute(luaL_loadbufferx as *const ());
+        //let orig = &mut std::mem::transmute(RECALL as *const());
+        log::info!("x: symbol: {:?} new: {:?}, RECALL: {:?}, orig: {:?}", symbol, new, ORIG as *const(), orig_ptr);
+        MSHookFunction(symbol,
+            new,
+            core::ptr::null_mut());
+        log::info!("x: symbol: {:?} new: {:?}, RECALL: {:?}, orig: {:?}", symbol, new, ORIG as *const(), orig_ptr);
     };
 }

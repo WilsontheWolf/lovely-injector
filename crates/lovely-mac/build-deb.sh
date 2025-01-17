@@ -1,6 +1,15 @@
 #!/bin/bash
 
 # Setup
+export arch=$2
+export type=$3
+if [ -z "$arch" ]; then
+	export arch="aarch64-apple-ios"
+fi
+if [ -z "$type" ]; then
+	export type="release"
+fi
+
 rm -r /tmp/lovely-ios 2> /dev/null
 
 mkdir /tmp/lovely-ios
@@ -17,7 +26,7 @@ cp deb-files/liblovely.plist /tmp/lovely-ios/files/Library/MobileSubstrate/Dynam
 
 cp deb-files/control /tmp/lovely-ios/
 
-cp ../../target/aarch64-apple-ios/aarch64-apple-ios/release/liblovely.dylib /tmp/lovely-ios/files/Library/MobileSubstrate/DynamicLibraries
+cp ../../target/$arch/$type/liblovely.dylib /tmp/lovely-ios/files/Library/MobileSubstrate/DynamicLibraries
 
 # Start building
 cd /tmp/lovely-ios
@@ -28,29 +37,24 @@ perl -pi -e 'chomp if eof' control
 echo "Version: $VERSION" >> control
 echo "Installed-Size: $(du -c files | tail -1 | cut -f 1)" >> control
 
-cp control control-rootless
-
-echo "Architecture: iphoneos-arm" >> control
-echo "Architecture: iphoneos-arm64" >> control-rootless
-
-# Make rootful
+if [ ! -z "$ROOTLESS" ]; then
+	export ARCH=arm64
+	echo "Architecture: iphoneos-arm64" >> control
+	mkdir -p files/var/jb
+	mv files/* files/var/jb/ 2> /dev/null
+else
+	export ARCH=arm
+	echo "Architecture: iphoneos-arm" >> control
+fi
+# Make
 tar -czf control.tar.gz control
 cd files
 tar -cf ../data.tar.lzma --lzma *
 cd ..
-ar cr systems.shorty.lovely-injector-$VERSION-iphoneos-arm.deb debian-binary control.tar.gz data.tar.lzma
+ar cr systems.shorty.lovely-injector-$VERSION-iphoneos-$ARCH.deb debian-binary control.tar.gz data.tar.lzma
 
-# Rootless
-mv control-rootless control
-tar -czf control.tar.gz control
-cd files
-mkdir -p var/jb
-mv * var/jb/ 2> /dev/null
-tar -cf ../data.tar.lzma --lzma *
-cd ..
-ar cr systems.shorty.lovely-injector-$VERSION-iphoneos-arm64.deb debian-binary control.tar.gz data.tar.lzma
 # Done
-mv *.deb $ORIG_PWD/../../target/aarch64-apple-ios/aarch64-apple-ios/release/
+mv *.deb $ORIG_PWD/../../target/$arch/$type/
 rm -r /tmp/lovely-ios
 
-echo "Created deb files in target/aarch64-apple-ios/aarch64-apple-ios/release/"
+echo "Created deb file in target/$arch/$type/"
