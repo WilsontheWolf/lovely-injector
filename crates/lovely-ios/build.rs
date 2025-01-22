@@ -8,4 +8,13 @@ fn main() {
     } else {
         println!("cargo:rustc-link-search=framework={}/vendor/lib/", theos);
     }
+    let dst = cmake::build("capstone");
+    println!("cargo:rustc-link-search=native={}/lib", dst.display());
+    println!("cargo:rustc-link-lib=static=capstone");
+
+    cc::Build::new()
+        .file("symbolfinder.c")
+        .flag("-fvisibility=default")
+        .include("./capstone/include/")
+        .compile("symbolfinder");
 }

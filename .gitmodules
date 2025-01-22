@@ -1,0 +1,3 @@
+[submodule "crates/lovely-ios/capstone"]
+	path = crates/lovely-ios/capstone
+	url = https://github.com/capstone-engine/capstone

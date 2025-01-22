@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-
+export IPHONEOS_DEPLOYMENT_TARGET=16.4
 export TYPE=debug
 if [[ $* == *package* ]]; then
 	export PACKAGE=1
