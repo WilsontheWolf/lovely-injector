@@ -2,7 +2,7 @@
 -- within your code with `local lovely = require("lovely")`.
 
 return {
-    repo = "https://github.com/ethangreen-dev/lovely-injector",
+    repo = "https://github.com/WilsontheWolf/lovely-injector/blob/ios",
     version = "lovely_template:version",
     mod_dir = "lovely_template:mod_dir",
 }
