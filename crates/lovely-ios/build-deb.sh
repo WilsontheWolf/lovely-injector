@@ -2,7 +2,7 @@
 
 # Setup
 export arch=$2
-export type=$3
+export type=$1
 if [ -z "$arch" ]; then
 	export arch="aarch64-apple-ios"
 fi

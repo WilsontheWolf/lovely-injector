@@ -6,7 +6,7 @@
 #include <capstone/capstone.h>
 
 
-uint64_t xref(const struct mach_header_64 *mh, const struct segment_command_64 *seg, uint64_t string_addr);
+uint64_t xref(const void *text_sec, size_t text_sec_sz, uint64_t string_addr);
 
 void (*lua_call)(void *, int, int);
 void (*lua_pcall)(void *, int, int, int);
@@ -54,11 +54,16 @@ void *get_loadbufferx() {
 	return lua_loadbufferx;
 }
 
+bool errored = false;
+
+bool hadError() {
+	return errored;
+}
 
 void realconstructor() {
 	uint32_t imageidx = 0;
 	for (; imageidx < 5; imageidx++) {
-		if (strstr(_dyld_get_image_name(imageidx), "Balatro.app/Balatro") != NULL)
+		if (strstr(_dyld_get_image_name(imageidx), ".app/") != NULL)
 			break;
 	}
 
@@ -110,25 +115,44 @@ void realconstructor() {
 	uint8_t lua_pushvalue_b[] = { 0x08, 0x14, 0x40, 0xf9, 0x29, 0x04, 0x00, 0x71, 0x0b, 0x01, 0x00, 0x54 };
 	uint8_t lua_tolstring_b[] = { 0xff, 0xc3, 0x00, 0xd1, 0xf4, 0x4f, 0x01, 0xa9, 0xfd, 0x7b, 0x02, 0xa9, 0xfd, 0x83, 0x00, 0x91, 0xf3, 0x03, 0x02, 0xaa, 0x28, 0x04, 0x00, 0x71 };
 
+	printf("Looking up lua_call...");
 	lua_call = memmem(text_sec, text_sec_sz, lua_call_b, sizeof(lua_call_b));
+	printf("Looking up lua_call...");
 	lua_pcall = memmem(text_sec, text_sec_sz, lua_pcall_b, sizeof(lua_pcall_b));
+	printf("Looking up lua_call...");
 	lua_tolstring = memmem(text_sec, text_sec_sz, lua_tolstring_b, sizeof(lua_tolstring_b));
+	printf("Looking up lua_call...");
 	lua_pushvalue = memmem(text_sec, text_sec_sz, lua_pushvalue_b, sizeof(lua_pushvalue_b));
+	printf("Looking up lua_call...");
 	lua_gettop = memmem(text_sec, text_sec_sz, lua_gettop_b, sizeof(lua_gettop_b));
 
 	char codepoint[11] = {'\0','c','o','d','e','p','o','i','n','t','\0'};
+	printf("Looking up noenv...");
 	uintptr_t lua_noenv = (uintptr_t)memmem(cstring_section, cstring_section_sz, "LUA_NOENV", sizeof("LUA_NOENV"));
+	printf("Looking up codepointstr...");
 	uintptr_t codepointstr = (uintptr_t)memmem(cstring_section, cstring_section_sz, codepoint, 11) + 1;
+	printf("Looking up loadstr...");
 	uintptr_t loadstr = (uintptr_t)memmem(cstring_section, cstring_section_sz, "=(load)", sizeof("=(load)"));
+	printf("Looking up wrapmathstr...");
 	uintptr_t wrapmathstr = (uintptr_t)memmem(cstring_section, cstring_section_sz, "=[love \"wrap_Math.lua\"]", sizeof("=[love \"wrap_Math.lua\"]"));
 
-	uintptr_t lua_noenv_xref = xref(mh, text_segment, lua_noenv);
+	printf("Looking up noenv...");
+	uintptr_t lua_noenv_xref = xref(text_sec, text_sec_sz, lua_noenv);
 
-	uintptr_t codepointstr_xref = xref(mh, text_segment, codepointstr);
+	printf("Looking up codepointstr_xref...");
+	uintptr_t codepointstr_xref = xref(text_sec, text_sec_sz, codepointstr);
 
-	uintptr_t loadstr_xref = xref(mh, text_segment, loadstr);
+	printf("Looking up loadstr_xref...");
+	uintptr_t loadstr_xref = xref(text_sec, text_sec_sz, loadstr);
 
-	uintptr_t wrapmathstr_xref = xref(mh, text_segment, wrapmathstr);
+	printf("Looking up wrapmathstr_xref...");
+	uintptr_t wrapmathstr_xref = xref(text_sec, text_sec_sz, wrapmathstr);
+
+	if (!lua_noenv_xref || !codepointstr_xref || !codepointstr_xref || !loadstr_xref || !loadstr_xref || !wrapmathstr_xref || !wrapmathstr_xref) {
+		cs_close(&handle);
+		errored = true;
+		return;
+	}
 
 	count = cs_disasm(handle, (void *)lua_noenv_xref, text_sec_sz - (lua_noenv_xref - (uintptr_t)text_sec), lua_noenv_xref, 75, &insn);
 
@@ -137,14 +161,17 @@ void realconstructor() {
 		if (insn[i].mnemonic[0] == 'b') {
 			switch (foundbs) {
 				case 0:
+					printf("Found getfield...");
 					lua_getfield = (void *)(uintptr_t)insn[i].detail->arm64.operands[0].imm;
 					foundbs++;
 					break;
 				case 2:
+					printf("Found settop...");
 					lua_settop = (void *)(uintptr_t)insn[i].detail->arm64.operands[0].imm;
 					foundbs++;
 					break;
 				case 6:
+					printf("Found setfield...");
 					lua_setfield = (void *)(uintptr_t)insn[i].detail->arm64.operands[0].imm;
 					foundbs++;
 					break;
@@ -161,6 +188,7 @@ void realconstructor() {
 	for (size_t i = 0; i < count; i++) {
 		if (insn[i].mnemonic[0] == 'b') {
 			if (foundbs == 1) {
+				printf("Found pushcloure...");
 				lua_pushcclosure = (void *)(uintptr_t)insn[i].detail->arm64.operands[0].imm;
 				break;
 			}
@@ -175,6 +203,7 @@ void realconstructor() {
 	for (size_t i = 0; i < count; i++) {
 		if (insn[i].mnemonic[0] == 'b') {
 			if (foundbs == 4) {
+				printf("Found loadbufferx...");
 				lua_loadbufferx = (void *)(uintptr_t)insn[i].detail->arm64.operands[0].imm;
 				break;
 			}
@@ -187,11 +216,13 @@ void realconstructor() {
 
 	for (size_t i = 0; i < count; i++) {
 		if (insn[i].mnemonic[0] == 'b') {
+			printf("Found loadbuffer...");
 			lua_loadbuffer = (void *)(uintptr_t)insn[i].detail->arm64.operands[0].imm;
 			break;
 		}
 	}
 	cs_free(insn, count);
+	cs_close(&handle);
 
 	return;
 }
@@ -200,10 +231,10 @@ void realconstructor() {
 #define is_add_imm(insn) ((insn & 0xFFC00000) == 0x91000000)
 #define is_adr(insn) ((insn & 0x9F000000) == 0x10000000)
 
-uint64_t xref(const struct mach_header_64 *mh, const struct segment_command_64 *seg, uint64_t string_addr) {
-	uint32_t *current = (uint32_t *)mh;
+uint64_t xref(const void *text_sec, size_t text_sec_sz, uint64_t string_addr) {
+	uint32_t *current = (uint32_t *)text_sec;
 
-	uint32_t *end = (uint32_t *)((uintptr_t)mh + (mh - seg->vmsize));
+	uint32_t *end = (uint32_t *)((uintptr_t)text_sec + text_sec_sz);
 	uint64_t last_adrp_target = 0;
 	int last_adrp_reg = -1;
 
@@ -236,7 +267,5 @@ uint64_t xref(const struct mach_header_64 *mh, const struct segment_command_64 *
 		}
 		current++;
 	}
-
 	return 0;
 }
-

@@ -18,6 +18,7 @@ extern "C" {
     fn get_loadbuffer() -> *const std::ffi::c_void;
     fn get_loadbufferx() -> *const std::ffi::c_void;
     fn realconstructor();
+    fn hadError() -> bool;
 }
 #[no_mangle]
 #[allow(non_snake_case)]
@@ -27,7 +28,6 @@ unsafe extern "C" fn luaL_loadbuffer(
     size: isize,
     name_ptr: *const u8,
 ) -> u32 {
-    info!("luaL_loadbuffer");
     let rt = RUNTIME.get_unchecked();
     rt.apply_buffer_patches(state, buf_ptr, size, name_ptr, null())
 }
@@ -41,7 +41,6 @@ unsafe extern "C" fn luaL_loadbufferx(
     name_ptr: *const u8,
     mode_ptr: *const u8,
 ) -> u32 {
-    info!("luaL_loadbufferx");
     let rt = RUNTIME.get_unchecked();
     rt.apply_buffer_patches(state, buf_ptr, size, name_ptr, mode_ptr)
 }
@@ -54,7 +53,7 @@ unsafe extern "C" fn orig(a: *mut LuaState, b: *const u8, c: isize, d: *const u8
         isize,
         *const u8,
         *const u8,
-        ) -> u32 >(ORIG_PTR)
+    ) -> u32 >(ORIG_PTR)
         (a,b,c,d,e)
 }
 
@@ -65,7 +64,7 @@ unsafe fn construct() {
         error!("{message}");
     }));
     let args: Vec<_> = env::args().collect();
-    let dump_all = true; //args.contains(&"--dump-all".to_string());
+    let dump_all = args.contains(&"--dump-all".to_string()); // TODO: something more accessible
 
     info!("Running symbol finder...");
     unsafe {
@@ -77,21 +76,29 @@ unsafe fn construct() {
         .unwrap_or_else(|_| panic!("Failed to instantiate runtime."));
     info!("About to hook luaL_loadbuffer");
     unsafe {
-        //let symbol = MSFindSymbol(core::ptr::null_mut(), CString::new("_luaL_loadbuffer").unwrap().as_ptr() as *const u8);
-        //info!("symbol: {:?}, loadbuffer: {:?}", symbol, get_loadbuffer());
+        let err = hadError();
+        let symbol = if err {
+            MSFindSymbol(core::ptr::null_mut(), CString::new("_luaL_loadbuffer").unwrap().as_ptr() as *const u8)
+        } else {
+            get_loadbuffer()
+        };
+
+        info!("symbol: {:?}, Using substrate: {}", symbol, err);
         let new: *const std::ffi::c_void = std::mem::transmute(luaL_loadbuffer as *const ());
-        MSHookFunction(get_loadbuffer(),
-        //MSHookFunction(symbol,
+        MSHookFunction(symbol,
             new,
             &mut ORIG_PTR as *mut usize as _);
-    };
-    info!("About to hook luaL_loadbufferx");
-    unsafe {
-        //let symbol = MSFindSymbol(core::ptr::null_mut(), CString::new("_luaL_loadbufferx").unwrap().as_ptr() as *const u8);
-        //info!("symbol: {:?}", symbol);
+
+        info!("About to hook luaL_loadbufferx");
+        let symbol = if err {
+            MSFindSymbol(core::ptr::null_mut(), CString::new("_luaL_loadbufferx").unwrap().as_ptr() as *const u8)
+        } else {
+            get_loadbufferx()
+        };
+
+        info!("symbol: {:?}, Using substrate: {}", symbol, err);
         let new: *const std::ffi::c_void = std::mem::transmute(luaL_loadbufferx as *const ());
-        MSHookFunction(get_loadbufferx(),
-        //MSHookFunction(symbol,
+        MSHookFunction(symbol,
             new,
             core::ptr::null_mut());
     };

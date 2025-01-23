@@ -17,4 +17,5 @@ fn main() {
         .flag("-fvisibility=default")
         .include("./capstone/include/")
         .compile("symbolfinder");
+    println!("cargo:rerun-if-changed=./symbolfinder.c");
 }

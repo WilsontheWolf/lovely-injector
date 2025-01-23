@@ -26,107 +26,62 @@ extern "C" {
     fn get_pushvalue() -> *const std::ffi::c_void;
     fn get_pushcclosure() -> *const std::ffi::c_void;
     fn get_tolstring() -> *const std::ffi::c_void;
-    fn get_toboolean() -> *const std::ffi::c_void;
-    fn get_topointer() -> *const std::ffi::c_void;
-    fn get_type() -> *const std::ffi::c_void;
-    fn get_typename() -> *const std::ffi::c_void;
-    fn get_isstring() -> *const std::ffi::c_void;
+    fn hadError() -> bool;
 }
 
-pub static lua_call: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize, isize)>> =
-    Lazy::new(|| unsafe { std::mem::transmute(get_call()) });
-
-pub static lua_pcall: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize, isize, isize) -> isize>,> =
-    Lazy::new(|| unsafe { std::mem::transmute(get_pcall()) });
-
-pub static lua_getfield: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize, *const char)>> =
-    Lazy::new(|| unsafe { std::mem::transmute(get_getfield()) });
-
-pub static lua_setfield: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize, *const char)>> =
-    Lazy::new(|| unsafe { std::mem::transmute(get_setfield()) });
-
-pub static lua_gettop: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState) -> isize>> =
-    Lazy::new(|| unsafe { std::mem::transmute(get_gettop()) });
-
-pub static lua_settop: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> isize>> =
-    Lazy::new(|| unsafe { std::mem::transmute(get_settop()) });
-
-pub static lua_pushvalue: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize)>> =
-    Lazy::new(|| unsafe { std::mem::transmute(get_pushvalue()) });
-
-pub static lua_pushcclosure: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, *const c_void, isize)>,> =
-    Lazy::new(|| unsafe { std::mem::transmute(get_pushcclosure()) });
-
-pub static lua_tolstring: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize, *mut isize) -> *const char>,> =
-    Lazy::new(|| unsafe { std::mem::transmute(get_tolstring()) });
-
-pub static lua_toboolean: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> bool>> =
-    Lazy::new(|| unsafe { std::mem::transmute(get_toboolean()) });
-
-pub static lua_topointer: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> *const c_void>,> =
-    Lazy::new(|| unsafe { std::mem::transmute(get_topointer()) });
-
-pub static lua_type: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> isize>> =
-    Lazy::new(|| unsafe { std::mem::transmute(get_type()) });
-
-pub static lua_typename: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> *const char>> =
-    Lazy::new(|| unsafe { std::mem::transmute(get_typename()) });
-
-pub static lua_isstring: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> isize>> =
-    Lazy::new(|| unsafe { std::mem::transmute(get_isstring()) });
-
-
-/*#[link(name = "CydiaSubstrate", kind = "framework")]
+#[link(name = "CydiaSubstrate", kind = "framework")]
 extern "C" {
     pub fn MSFindSymbol(_:*mut std::ffi::c_void, _:*const char) -> *const std::ffi::c_void;
 }
 
+unsafe fn lookupFn(name: &str) -> *const std::ffi::c_void {
+    if hadError() {
+        MSFindSymbol(core::ptr::null_mut(), CString::new(name).unwrap().as_ptr() as *const char)
+    } else {
+        match name {
+            "_lua_call" => get_call(),
+            "_lua_pcall" => get_pcall(),
+            "_lua_getfield" => get_getfield(),
+            "_lua_setfield" => get_setfield(),
+            "_lua_gettop" => get_gettop(),
+            "_lua_settop" => get_settop(),
+            "_lua_pushvalue" => get_pushvalue(),
+            "_lua_pushcclosure" => get_pushcclosure(),
+            "_lua_tolstring" => get_tolstring(),
+            _ => panic!("Tried looking up a symbol I don't know about"),
+        }
+    }
+}
+
 pub static lua_call: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize, isize)>> =
-    Lazy::new(|| unsafe { std::mem::transmute(MSFindSymbol(core::ptr::null_mut(), CString::new("_lua_call").unwrap().as_ptr() as *const char)) });
+    Lazy::new(|| unsafe { std::mem::transmute(lookupFn("_lua_call")) });
 
 pub static lua_pcall: Lazy<
     Symbol<unsafe extern "C" fn(*mut LuaState, isize, isize, isize) -> isize>,
-> = Lazy::new(|| unsafe { std::mem::transmute(MSFindSymbol(core::ptr::null_mut(), CString::new("_lua_pcall").unwrap().as_ptr() as *const char)) });
+> = Lazy::new(|| unsafe { std::mem::transmute(lookupFn("_lua_pcall")) });
 
 pub static lua_getfield: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize, *const char)>> =
-    Lazy::new(|| unsafe { std::mem::transmute(MSFindSymbol(core::ptr::null_mut(), CString::new("_lua_getfield").unwrap().as_ptr() as *const char)) });
+    Lazy::new(|| unsafe { std::mem::transmute(lookupFn("_lua_getfield")) });
 
 pub static lua_setfield: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize, *const char)>> =
-    Lazy::new(|| unsafe { std::mem::transmute(MSFindSymbol(core::ptr::null_mut(), CString::new("_lua_setfield").unwrap().as_ptr() as *const char)) });
+    Lazy::new(|| unsafe { std::mem::transmute(lookupFn("_lua_setfield")) });
 
 pub static lua_gettop: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState) -> isize>> =
-    Lazy::new(|| unsafe { std::mem::transmute(MSFindSymbol(core::ptr::null_mut(), CString::new("_lua_gettop").unwrap().as_ptr() as *const char)) });
+    Lazy::new(|| unsafe { std::mem::transmute(lookupFn("_lua_gettop")) });
 
 pub static lua_settop: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> isize>> =
-    Lazy::new(|| unsafe { std::mem::transmute(MSFindSymbol(core::ptr::null_mut(), CString::new("_lua_settop").unwrap().as_ptr() as *const char)) });
+    Lazy::new(|| unsafe { std::mem::transmute(lookupFn("_lua_settop")) });
 
 pub static lua_pushvalue: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize)>> =
-    Lazy::new(|| unsafe { std::mem::transmute(MSFindSymbol(core::ptr::null_mut(), CString::new("_lua_pushvalue").unwrap().as_ptr() as *const char)) });
+    Lazy::new(|| unsafe { std::mem::transmute(lookupFn("_lua_pushvalue")) });
 
 pub static lua_pushcclosure: Lazy<
     Symbol<unsafe extern "C" fn(*mut LuaState, *const c_void, isize)>,
-> = Lazy::new(|| unsafe { std::mem::transmute(MSFindSymbol(core::ptr::null_mut(), CString::new("_lua_pushcclosure").unwrap().as_ptr() as *const char)) });
+> = Lazy::new(|| unsafe { std::mem::transmute(lookupFn("_lua_pushcclosure")) });
 
 pub static lua_tolstring: Lazy<
     Symbol<unsafe extern "C" fn(*mut LuaState, isize, *mut isize) -> *const char>,
-> = Lazy::new(|| unsafe { std::mem::transmute(MSFindSymbol(core::ptr::null_mut(), CString::new("_lua_tolstring").unwrap().as_ptr() as *const char)) });
-
-pub static lua_toboolean: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> bool>> =
-    Lazy::new(|| unsafe { std::mem::transmute(MSFindSymbol(core::ptr::null_mut(), CString::new("_lua_toboolean").unwrap().as_ptr() as *const char)) });
-
-pub static lua_topointer: Lazy<
-    Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> *const c_void>,
-> = Lazy::new(|| unsafe { std::mem::transmute(MSFindSymbol(core::ptr::null_mut(), CString::new("_lua_topointer").unwrap().as_ptr() as *const char)) });
-
-pub static lua_type: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> isize>> =
-    Lazy::new(|| unsafe { std::mem::transmute(MSFindSymbol(core::ptr::null_mut(), CString::new("_lua_type").unwrap().as_ptr() as *const char)) });
-
-pub static lua_typename: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> *const char>> =
-    Lazy::new(|| unsafe { std::mem::transmute(MSFindSymbol(core::ptr::null_mut(), CString::new("_lua_typename").unwrap().as_ptr() as *const char)) });
-
-pub static lua_isstring: Lazy<Symbol<unsafe extern "C" fn(*mut LuaState, isize) -> isize>> =
-    Lazy::new(|| unsafe { std::mem::transmute(MSFindSymbol(core::ptr::null_mut(), CString::new("_lua_isstring").unwrap().as_ptr() as *const char)) });
-*/
+> = Lazy::new(|| unsafe { std::mem::transmute(lookupFn("_lua_tolstring")) });
 
 /// Load the provided buffer as a lua module with the specified name.
 /// # Safety
