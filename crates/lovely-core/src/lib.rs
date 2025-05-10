@@ -69,7 +69,10 @@ impl Lovely {
                 .to_string_lossy()
                 .replace(".", "_")
         };
-        let mut mod_dir = dirs::config_dir().unwrap().join(game_name).join("Mods");
+        let mut mod_dir = if env::consts::OS == "android" {
+            // PathBuf::from("/sdcard/Android/data/org.love2d.android/files/save/Mods")
+            PathBuf::from("/data/data/org.love2d.android/files/save/ASET/Mods")
+        } else {dirs::config_dir().unwrap().join(game_name).join("Mods")};
 
         let mut is_vanilla = false;
 
@@ -85,6 +88,7 @@ impl Lovely {
 
         let log_dir = mod_dir.join("lovely").join("log");
 
+        // log::init(&PathBuf::from("/data/data/org.love2d.android/files/save/testing-log")).unwrap_or_else(|e| panic!("Failed to initialize logger: {e:?}"));
         log::init(&log_dir).unwrap_or_else(|e| panic!("Failed to initialize logger: {e:?}"));
 
         info!("Lovely {LOVELY_VERSION}");

@@ -49,7 +49,7 @@ unsafe extern "C" fn lovely_init(
         let rt = Lovely::init(
             &|a, b, c, d, e| RECALL.get_unchecked()(a, b, c, d, e),
             lua,
-            false,
+            true,
         );
         RUNTIME
             .set(rt)
