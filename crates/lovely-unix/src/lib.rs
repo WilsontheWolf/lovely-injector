@@ -7,12 +7,12 @@ use std::{
     env,
     ffi::c_void,
     mem, panic,
-    sync::{LazyLock, OnceLock},
+    sync::{LazyLock, OnceLock, Arc},
 };
 
 use lovely_core::Lovely;
 
-static RUNTIME: OnceLock<Lovely> = OnceLock::new();
+static RUNTIME: OnceLock<Arc<Lovely>> = OnceLock::new();
 
 type LoadBuffer =
     unsafe extern "C" fn(*mut LuaState, *const u8, usize, *const u8, *const u8) -> u32;

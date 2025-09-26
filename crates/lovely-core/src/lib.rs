@@ -7,7 +7,7 @@ use std::ffi::{CStr, c_int};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 use std::{env, fs};
-use std::sync::{RwLock, Arc};
+use std::sync::{RwLock, Arc, Weak};
 
 use log::*;
 
@@ -18,7 +18,6 @@ use patch::{Patch, PatchFile, Priority};
 use regex_lite::Regex;
 use sha2::{Digest, Sha256};
 use sys::{LuaLib, LuaState, LuaModule, LUA, LuaFunc};
-use std::sync::Arc;
 use std::sync::Mutex;
 
 pub mod chunk_vec_cursor;
@@ -45,7 +44,7 @@ pub struct Lovely {
 
 impl Lovely {
     /// Initialize the Lovely patch runtime.
-    pub fn init(loadbuffer: &'static LoadBuffer, lualib: LuaLib, dump_all: bool) -> Self {
+    pub fn init(loadbuffer: &'static LoadBuffer, lualib: LuaLib, dump_all: bool) -> Arc<Self> {
         LUA.set(lualib).unwrap_or_else(|_| panic!("LUA static var has already been set."));
 
         let start = Instant::now();
@@ -102,14 +101,14 @@ impl Lovely {
         if is_vanilla {
             info!("Running in vanilla mode");
 
-            return Lovely {
+            return Arc::new(Lovely {
                 mod_dir,
                 is_vanilla,
                 loadbuffer,
                 patch_table: Default::default(),
                 dump_all,
                 seen_states: Arc::new(Mutex::new(HashSet::new())),
-            };
+            });
         }
 
         // Validate that an older Lovely install doesn't already exist within the game directory.
@@ -133,29 +132,32 @@ impl Lovely {
         }
 
         info!("Using mod directory at {mod_dir:?}");
-        let patch_table = Arc::new(RwLock::new(PatchTable::load(&mod_dir).with_loadbuffer(loadbuffer)));
+        Arc::new_cyclic(|me| {
+            // Create the actual struct here.
+            let patch_table = Arc::new(RwLock::new(PatchTable::load(&mod_dir, me.clone()).with_loadbuffer(loadbuffer)));
 
-        let dump_dir = mod_dir.join("lovely").join("dump");
-        if dump_dir.is_dir() {
-            info!("Cleaning up dumps directory at {dump_dir:?}");
-            fs::remove_dir_all(&dump_dir).unwrap_or_else(|e| {
-                panic!("Failed to recursively delete dumps directory at {dump_dir:?}: {e:?}")
-            });
-        }
+            let dump_dir = mod_dir.join("lovely").join("dump");
+            if dump_dir.is_dir() {
+                info!("Cleaning up dumps directory at {dump_dir:?}");
+                fs::remove_dir_all(&dump_dir).unwrap_or_else(|e| {
+                    panic!("Failed to recursively delete dumps directory at {dump_dir:?}: {e:?}")
+                });
+            }
 
-        info!(
-            "Initialization complete in {}ms",
-            start.elapsed().as_millis()
-        );
+            info!(
+                "Initialization complete in {}ms",
+                start.elapsed().as_millis()
+            );
 
-        Lovely {
-            mod_dir,
-            is_vanilla,
-            loadbuffer,
-            patch_table,
-            dump_all,
-            seen_states: Arc::new(Mutex::new(HashSet::new())),
-        }
+            Lovely {
+                mod_dir,
+                is_vanilla,
+                loadbuffer,
+                patch_table,
+                dump_all,
+                seen_states: Arc::new(Mutex::new(HashSet::new())),
+            }
+        })
     }
 
     /// Apply patches onto the raw buffer.
@@ -216,16 +218,6 @@ impl Lovely {
             }
         };
 
-        if name == "Ligma" {
-            // This code path deadlocks as of now. To prevent this mv the binding and patch_table
-            // def's into the block they are above and copy them below this block. This is just a
-            // hack to get it working
-            info!("hi mom");
-            let binding = Arc::clone(&self.patch_table);
-            let mut patch_table = binding.write().unwrap();
-            *patch_table = PatchTable::load(&self.mod_dir).with_loadbuffer(self.loadbuffer);
-        }
-
         // Stop here if no valid patch exists for this target.
         if !patch_table.needs_patching(name) && !self.dump_all {
             return (self.loadbuffer)(state, buf_ptr, size, name_ptr, mode_ptr);
@@ -278,6 +270,14 @@ impl Lovely {
 
         (self.loadbuffer)(state, patched.as_ptr(), patched.len(), name_ptr, mode_ptr)
     }
+
+    unsafe fn reload_from_lua(&self, _state: *mut LuaState, lovely: Weak<Lovely>) -> c_int {
+        info!("hi mom");
+        let binding = Arc::clone(&self.patch_table);
+        let mut patch_table = binding.write().unwrap();
+        *patch_table = PatchTable::load(&self.mod_dir, lovely).with_loadbuffer(self.loadbuffer);
+        0
+    }
 }
 
 #[derive(Default)]
@@ -288,6 +288,7 @@ pub struct PatchTable {
     // Unsorted
     patches: Vec<(Patch, Priority, PathBuf)>,
     vars: HashMap<String, String>,
+    lovely: Weak<Lovely>,
     // args: HashMap<String, String>,
 }
 
@@ -296,7 +297,7 @@ impl PatchTable {
     /// within each subdirectory that matches either:
     /// - MOD_DIR/lovely.toml
     /// - MOD_DIR/lovely/*.toml
-    pub fn load(mod_dir: &Path) -> PatchTable {
+    pub fn load(mod_dir: &Path, lovely: Weak<Lovely>) -> PatchTable {
         fn filename_cmp(first: &Path, second: &Path) -> Ordering {
             let first = first
                 .file_name()
@@ -445,6 +446,7 @@ impl PatchTable {
             loadbuffer: None,
             targets,
             vars: var_table,
+            lovely,
             // args: HashMap::new(),
             patches,
         }
@@ -471,10 +473,12 @@ impl PatchTable {
         let mod_dir = self.mod_dir.to_str().unwrap().replace('\\', "/");
         let repo = "https://github.com/ethangreen-dev/lovely-injector";
 
+        let lovely = self.lovely.upgrade().unwrap().clone();
         LuaModule::new()
             .add_var("repo", repo)
             .add_var("version", env!("CARGO_PKG_VERSION"))
             .add_var("mod_dir", mod_dir)
+            // .add_var("reload_patches", &|state| lovely.reload_from_lua(state, self.lovely) as LuaFunc)
             .commit(state);
     }
 
