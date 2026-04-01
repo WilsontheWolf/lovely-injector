@@ -60,7 +60,7 @@ pub fn init(log_dir: &Path) -> Result<(), SetLoggerError> {
         .unwrap_or_else(|e| panic!("Failed to create log file at {log_path:?}: {e}"));
 
     let logger = LovelyLogger {
-        use_console: true,
+        use_console: false,
         log_file: RwLock::new(log_file),
         log_path: String::from(log_path.to_str().unwrap()),
     };
