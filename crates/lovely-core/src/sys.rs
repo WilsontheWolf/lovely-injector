@@ -171,6 +171,12 @@ impl Pushable for isize {
     }
 }
 
+impl Pushable for usize {
+    unsafe fn push(&self, state: *mut LuaState) {
+        lua_pushnumber(state, *self as _);
+    }
+}
+
 impl Pushable for bool {
     unsafe fn push(&self, state: *mut LuaState) {
         lua_pushboolean(state, *self as _);
@@ -183,22 +189,28 @@ impl Pushable for LuaFunc {
     }
 }
 
+enum Key {
+    String(String),
+    Number(isize),
+}
+
 pub struct LuaVar<P>
 where
     P: std::ops::Deref,
     P::Target: Pushable,
 {
-    name: String,
+    name: Key,
     val: P,
 }
 
 pub struct LuaTable {
     var: Vec<LuaVar<Box<dyn Pushable>>>,
+    index: isize,
 }
 
 impl LuaTable {
     pub(crate) fn new() -> Self {
-        LuaTable { var: vec![] }
+        LuaTable { var: vec![], index: 1 }
     }
 
     /// Add a variable to this Lua module.
@@ -206,9 +218,19 @@ impl LuaTable {
         let name = format!("{name}\0");
         let mut var = self.var;
         let val = Box::new(val);
+        let name = Key::String(name);
         var.push(LuaVar { name, val });
 
-        LuaTable { var }
+        LuaTable { var, index: self.index }
+    }
+
+    pub fn push_var<P: Pushable + 'static>(self, val: P) -> Self {
+        let mut var = self.var;
+        let val = Box::new(val);
+        let name = Key::Number(self.index);
+        var.push(LuaVar { name, val });
+
+        LuaTable { var, index: self.index + 1 }
     }
 }
 
@@ -218,8 +240,11 @@ impl Pushable for LuaTable {
         lua_createtable(state, 0, self.var.len().try_into().unwrap());
 
         for lua_var in self.var.iter() {
+            match &lua_var.name {
+                Key::String(s) => lua_pushstring(state, s.as_ptr() as _),
+                Key::Number(n) => state.push(*n),
+            }
             // Push the var name and value onto the stack.
-            lua_pushstring(state, lua_var.name.as_ptr() as _);
             lua_var.val.push(state);
 
             // Set the table key:val from what we previously pushed onto the stack.

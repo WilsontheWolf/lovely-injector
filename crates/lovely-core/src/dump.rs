@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use crate::sys::{LuaState, LuaTable, Pushable};
 
 use serde::Serialize;
 
@@ -78,6 +79,60 @@ pub struct PatchDebug {
     pub entries: Vec<PatchDebugEntry>,
 }
 
+impl Pushable for PatchDebug {
+    unsafe fn push(&self, state: *mut LuaState) {
+        let mut entries = LuaTable::new();
+
+        for entry in self.entries.iter() {
+            // patch_source
+            let source = &entry.patch_source;
+            let patch_type = match source.patch_type {
+                DebugPatchType::Pattern => "pattern",
+                DebugPatchType::Regex => "regex",
+                DebugPatchType::Copy => "copy",
+            };
+            let mut patch_source = LuaTable::new()
+                .add_var("file", source.file.clone())
+                .add_var("patch_type", patch_type);
+            if source.pattern.is_some() {
+                let pattern = source.pattern.clone();
+                patch_source = patch_source.add_var("pattern", pattern.unwrap());
+            }
+
+            // Regions
+            let mut regions = LuaTable::new();
+            for region in entry.regions.iter() {
+                let region_table = LuaTable::new()
+                    .add_var("start_line", region.start_line)
+                    .add_var("end_line", region.end_line);
+
+                regions = regions.push_var(region_table);
+            }
+
+            let mut et = LuaTable::new()
+                .add_var("patch_source", patch_source)
+                .add_var("regions", regions);
+
+            // Warnings
+            if entry.warnings.is_some() {
+                let mut warnings = LuaTable::new();
+                let it = entry.warnings.as_ref().unwrap();
+                for warning in it.iter() {
+                    warnings = warnings.push_var(warning.clone());
+                }
+                et = et.add_var("warnings", warnings);
+            }
+
+            entries = entries.push_var(et);
+        }
+        let table = LuaTable::new()
+            .add_var("buffer_name", self.buffer_name.clone())
+            .add_var("entries", entries);
+
+        table.push(state);
+    }
+}
+
 impl PatchDebug {
     pub fn new(buffer_name: &str) -> Self {
         Self {
@@ -99,10 +154,10 @@ impl PatchDebug {
                         start_line: rope.line_of_byte(r.start) + 1,
                         end_line: rope.line_of_byte(r.end.saturating_sub(1)) + 1,
                     })
-                    .collect(),
+                .collect(),
                 warnings: entry.warnings,
             })
-            .collect();
+        .collect();
 
         Self {
             buffer_name: buffer_name.to_string(),

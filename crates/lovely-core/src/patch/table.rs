@@ -89,17 +89,17 @@ impl PatchTable {
     ) -> Result<(String, PatchDebug), String> { // Buffer Content, Debug info, Error message
         let target = target.strip_prefix('@').unwrap_or(target);
 
-        let module_patches = self
-            .patches
-            .iter()
-            .filter_map(|(x, prio, path)| match x {
-                Patch::Module(patch) => Some((patch, prio, path)),
-                _ => None,
-            })
-            .filter(|(x, _, _)| x.load_now)
-            .sorted_by_key(|(_, &prio, _)| prio)
-            .map(|(x, _, path)| (x, path));
-
+        // let module_patches = self
+        //     .patches
+        //     .iter()
+        //     .filter_map(|(x, prio, path)| match x {
+        //         Patch::Module(patch) => Some((patch, prio, path)),
+        //         _ => None,
+        //     })
+        //     .filter(|(x, _, _)| x.load_now)
+        //     .sorted_by_key(|(_, &prio, _)| prio)
+        //     .map(|(x, _, path)| (x, path));
+        //
         let copy_patches = self
             .patches
             .iter()
@@ -131,13 +131,13 @@ impl PatchTable {
         let mut byte_entries: Vec<ByteDebugEntry> = Vec::new();
 
         // Apply module injection patches.
-        for (patch, path) in module_patches {
-            let result = unsafe { patch.apply(target, lua_state, path) };
-
-            if result? {
-                patch_count += 1;
-            }
-        }
+        // for (patch, path) in module_patches {
+        //     let result = unsafe { patch.apply(target, lua_state, path) };
+        //
+        //     if result? {
+        //         patch_count += 1;
+        //     }
+        // }
 
         // Apply copy patches.
         for (patch, path) in copy_patches {

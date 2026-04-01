@@ -342,8 +342,10 @@ unsafe extern "C" fn apply_patches(lua_state: *mut LuaState) -> c_int {
                 num = 2;
                 return;
             }
-            let (patched, _debug) = res.unwrap();
+            let (patched, debug) = res.unwrap();
             lua_state.push(patched);
+            lua_state.push(debug);
+            num = 2;
         } else {
             lua_state.push(buf)
         }
