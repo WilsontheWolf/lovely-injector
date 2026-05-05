@@ -6,6 +6,7 @@ use crate::dump::{ByteDebugEntry, PatchDebug};
 use crate::patch::{loader, vars};
 use crate::patch::{Patch, Priority};
 use crate::sys::{preload_module, LuaFunc, LuaState, LuaTable};
+use crate::lua_serde::serializer::test_seralizer;
 use crop::Rope;
 use itertools::Itertools;
 use log::*;
@@ -73,6 +74,7 @@ impl PatchTable {
                 .add_var("set_var", setvar as LuaFunc)
                 .add_var("get_var", getvar as LuaFunc)
                 .add_var("remove_var", removevar as LuaFunc)
+                .add_var("test", test_seralizer as LuaFunc)
                 .add_var("log_path", get_log_path().unwrap()),
         );
     }

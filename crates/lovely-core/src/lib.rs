@@ -26,6 +26,7 @@ pub mod dump;
 pub mod log;
 pub mod patch;
 pub mod sys;
+mod lua_serde;
 
 pub const LOVELY_VERSION: &str = env!("CARGO_PKG_VERSION");
 

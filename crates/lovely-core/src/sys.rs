@@ -74,6 +74,7 @@ generate! (LuaLib {
     pub unsafe extern "C" fn lua_tolstring(state: *mut LuaState, index: c_int, len: *mut usize) -> *const c_char;
     pub unsafe extern "C" fn lua_type(state: *mut LuaState, index: c_int) -> c_int;
     pub unsafe extern "C" fn lua_pushstring(state: *mut LuaState, string: *const char);
+    pub unsafe extern "C" fn lua_pushlstring(state: *mut LuaState, string: *const char, len: usize);
     pub unsafe extern "C" fn lua_pushnumber(state: *mut LuaState, number: f64);
     pub unsafe extern "C" fn lua_pushboolean(state: *mut LuaState, b: c_int);
     pub unsafe extern "C" fn lua_settable(state: *mut LuaState, index: c_int);
@@ -81,6 +82,7 @@ generate! (LuaLib {
     pub unsafe extern "C" fn lua_error(state: *mut LuaState) -> c_int;
     pub unsafe extern "C" fn lual_register(state: *mut LuaState, libname: *const char, l: *const c_void);
     pub unsafe extern "C" fn lual_checklstring(state: *mut LuaState, index: c_int, len: *mut usize) -> *const char;
+    pub unsafe extern "C" fn lua_pushnil(state: *mut LuaState);
 });
 
 impl LuaLib {
@@ -101,12 +103,15 @@ impl LuaLib {
             lua_type: *library.get(b"lua_type").unwrap(),
             lual_register: *library.get(b"luaL_register").unwrap(),
             lua_pushstring: *library.get(b"lua_pushstring").unwrap(),
+            lua_pushlstring: *library.get(b"lua_pushlstring").unwrap(),
             lua_pushnumber: *library.get(b"lua_pushnumber").unwrap(),
             lua_pushboolean: *library.get(b"lua_pushboolean").unwrap(),
             lua_settable: *library.get(b"lua_settable").unwrap(),
             lua_createtable: *library.get(b"lua_createtable").unwrap(),
             lua_error: *library.get(b"lua_error").unwrap(),
             lual_checklstring: *library.get(b"luaL_checklstring").unwrap(),
+            lua_pushnil: *library.get(b"lua_pushnil").unwrap(),
+            // TODO: If this in a PR, make sure I remebered to update liblovely
         }
     }
 }
@@ -116,6 +121,9 @@ pub(crate) trait LuaStateTrait {
     unsafe fn push<P: Pushable>(self, obj: P);
     unsafe fn push_closure(self, func: LuaFunc, vals: c_int);
     unsafe fn to_string(self, index: c_int) -> String;
+    unsafe fn pushnil(self);
+    unsafe fn createtable(self, narr: c_int, nrec: c_int);
+    unsafe fn settable(self, index: c_int);
 }
 
 impl LuaStateTrait for *mut LuaState {
@@ -134,6 +142,18 @@ impl LuaStateTrait for *mut LuaState {
         let str_buf = slice::from_raw_parts(arg_str as *const u8, str_len);
         String::from_utf8_lossy(str_buf).to_string()
     }
+
+    unsafe fn pushnil(self) {
+        lua_pushnil(self)
+    }
+
+    unsafe fn createtable(self, narr: c_int, nrec: c_int) {
+        lua_createtable(self, narr, nrec)
+    }
+
+    unsafe fn settable(self, index: c_int) {
+        lua_settable(self, index);
+    }
 }
 /// A trait which allows the implementing value to generically push its value onto the Lua stack.
 pub trait Pushable {
@@ -144,28 +164,55 @@ pub trait Pushable {
     unsafe fn push(&self, state: *mut LuaState);
 }
 
+impl Pushable for CString {
+    unsafe fn push(&self, state: *mut LuaState) {
+        lua_pushstring(state, self.as_ptr() as _);
+    }
+}
+
 impl Pushable for String {
     unsafe fn push(&self, state: *mut LuaState) {
-        let value = format!("{self}\0");
-        lua_pushstring(state, value.as_ptr() as _);
+        lua_pushlstring(state, self.as_ptr() as _, self.len());
     }
 }
 
 impl Pushable for &String {
     unsafe fn push(&self, state: *mut LuaState) {
-        let value = format!("{self}\0");
-        lua_pushstring(state, value.as_ptr() as _);
+        lua_pushlstring(state, self.as_ptr() as _, self.len());
     }
 }
 
 impl Pushable for &str {
     unsafe fn push(&self, state: *mut LuaState) {
-        let value = CString::new(*self).unwrap();
-        lua_pushstring(state, value.into_raw() as _);
+        lua_pushlstring(state, self.as_ptr() as _, self.len());
     }
 }
 
 impl Pushable for isize {
+    unsafe fn push(&self, state: *mut LuaState) {
+        lua_pushnumber(state, *self as _);
+    }
+}
+
+impl Pushable for usize {
+    unsafe fn push(&self, state: *mut LuaState) {
+        lua_pushnumber(state, *self as _);
+    }
+}
+
+impl Pushable for i64 {
+    unsafe fn push(&self, state: *mut LuaState) {
+        lua_pushnumber(state, *self as _);
+    }
+}
+
+impl Pushable for f64 {
+    unsafe fn push(&self, state: *mut LuaState) {
+        lua_pushnumber(state, *self as _);
+    }
+}
+
+impl Pushable for u64 {
     unsafe fn push(&self, state: *mut LuaState) {
         lua_pushnumber(state, *self as _);
     }
@@ -203,10 +250,9 @@ impl LuaTable {
 
     /// Add a variable to this Lua module.
     pub fn add_var<P: Pushable + 'static>(self, name: &'static str, val: P) -> Self {
-        let name = format!("{name}\0");
         let mut var = self.var;
         let val = Box::new(val);
-        var.push(LuaVar { name, val });
+        var.push(LuaVar { name: name.to_string(), val });
 
         LuaTable { var }
     }
@@ -219,7 +265,7 @@ impl Pushable for LuaTable {
 
         for lua_var in self.var.iter() {
             // Push the var name and value onto the stack.
-            lua_pushstring(state, lua_var.name.as_ptr() as _);
+            lua_pushlstring(state, lua_var.name.as_ptr() as _, lua_var.name.len());
             lua_var.val.push(state);
 
             // Set the table key:val from what we previously pushed onto the stack.
