@@ -4,7 +4,7 @@ use std::{
     ptr,
 };
 
-use crate::sys::{self, lua_identity_closure, lua_err_identity_closure, LuaState, LuaStateTrait};
+use crate::sys::{self, lua_identity_closure, lua_err_identity_closure, LuaState, LuaStateTrait, LuaFunc};
 use crate::RUNTIME;
 use serde::{Deserialize, Serialize};
 
@@ -81,7 +81,7 @@ impl ModulePatch {
             );
             let err = state.to_string(-1);
             log::error!("Error: {err}");
-            state.push_closure(lua_err_identity_closure, 1);
+            state.push_closure(LuaFunc(lua_err_identity_closure), 1);
             let module_cstr = CString::new(self.name.clone()).unwrap();
             sys::lua_setfield(state, field_index, module_cstr.into_raw() as _);
             sys::lua_settop(state, stack_top);
@@ -103,7 +103,7 @@ impl ModulePatch {
                 );
                 let err = state.to_string(-1);
                 log::error!("Error: {err}");
-                state.push_closure(lua_err_identity_closure, 1);
+                state.push_closure(LuaFunc(lua_err_identity_closure), 1);
                 let module_cstr = CString::new(self.name.clone()).unwrap();
                 sys::lua_setfield(state, field_index, module_cstr.into_raw() as _);
                 sys::lua_settop(state, stack_top);
@@ -111,7 +111,7 @@ impl ModulePatch {
                 return Err("An error occured evaluating a load_now module:\n\nError: ".to_owned() + &err);
             }
             // Wrap this in the identity closure function
-            state.push_closure(lua_identity_closure, 1);
+            state.push_closure(LuaFunc(lua_identity_closure), 1);
         }
 
         // Insert results onto the package.preload global table.

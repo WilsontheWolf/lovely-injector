@@ -69,12 +69,12 @@ impl PatchTable {
                 .add_var("repo", repo)
                 .add_var("version", env!("CARGO_PKG_VERSION"))
                 .add_var("mod_dir", mod_dir)
-                .add_var("reload_patches", reload_patches as LuaFunc)
-                .add_var("apply_patches", apply_patches as LuaFunc)
-                .add_var("set_var", setvar as LuaFunc)
-                .add_var("get_var", getvar as LuaFunc)
-                .add_var("remove_var", removevar as LuaFunc)
-                .add_var("test", test_seralizer as LuaFunc)
+                .add_var("reload_patches", LuaFunc(reload_patches))
+                .add_var("apply_patches", LuaFunc(apply_patches))
+                .add_var("set_var", LuaFunc(setvar))
+                .add_var("get_var", LuaFunc(getvar))
+                .add_var("remove_var", LuaFunc(removevar))
+                .add_var("test", LuaFunc(test_seralizer))
                 .add_var("log_path", get_log_path().unwrap()),
         );
     }

@@ -1,3 +1,4 @@
+#![feature(min_specialization)]
 #![allow(non_upper_case_globals)]
 
 use core::slice;
@@ -251,7 +252,7 @@ impl Lovely {
         let patch_table = binding.read().unwrap();
         {
             if !sys::is_module_preloaded(state, "lovely") {
-                let closure: LuaFunc = sys::override_print;
+                let closure = LuaFunc(sys::override_print);
                 state.push(closure);
                 sys::lua_setfield(state, sys::LUA_GLOBALSINDEX, c"print".as_ptr());
 

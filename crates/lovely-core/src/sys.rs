@@ -3,6 +3,8 @@ use std::ffi::{c_char, c_int, c_void, CString};
 use std::ptr;
 use std::slice;
 use std::sync::OnceLock;
+use crate::lua_serde::serializer::push;
+use serde::Serialize;
 
 use itertools::Itertools;
 use libloading::Library;
@@ -12,7 +14,8 @@ use log::info;
 pub static LUA: OnceLock<LuaLib> = OnceLock::new();
 
 pub type LuaState = c_void;
-pub type LuaFunc = unsafe extern "C" fn(*mut LuaState) -> c_int;
+pub type _LuaFunc = unsafe extern "C" fn(*mut LuaState) -> c_int;
+pub struct LuaFunc(pub _LuaFunc);
 
 pub const LUA_GLOBALSINDEX: c_int = -10002;
 pub const LUA_TNIL: c_int = 0;
@@ -70,7 +73,7 @@ generate! (LuaLib {
     pub unsafe extern "C" fn lua_gettop(state: *mut LuaState) -> c_int;
     pub unsafe extern "C" fn lua_settop(state: *mut LuaState, index: c_int);
     pub unsafe extern "C" fn lua_pushvalue(state: *mut LuaState, index: c_int);
-    pub unsafe extern "C" fn lua_pushcclosure(state: *mut LuaState, f: LuaFunc, n: c_int);
+    pub unsafe extern "C" fn lua_pushcclosure(state: *mut LuaState, f: _LuaFunc, n: c_int);
     pub unsafe extern "C" fn lua_tolstring(state: *mut LuaState, index: c_int, len: *mut usize) -> *const c_char;
     pub unsafe extern "C" fn lua_type(state: *mut LuaState, index: c_int) -> c_int;
     pub unsafe extern "C" fn lua_pushstring(state: *mut LuaState, string: *const char);
@@ -132,7 +135,7 @@ impl LuaStateTrait for *mut LuaState {
     }
 
     unsafe fn push_closure(self, func: LuaFunc, vals: c_int) {
-        lua_pushcclosure(self, func, vals);
+        lua_pushcclosure(self, func.0, vals);
     }
 
     unsafe fn to_string(self, index: c_int) -> String {
@@ -164,6 +167,11 @@ pub trait Pushable {
     unsafe fn push(&self, state: *mut LuaState);
 }
 
+impl<T> Pushable for T where T: Serialize {
+    default unsafe fn push(&self, state: *mut LuaState) {
+        push(state, self).unwrap();
+    }
+}
 impl Pushable for CString {
     unsafe fn push(&self, state: *mut LuaState) {
         lua_pushstring(state, self.as_ptr() as _);
@@ -226,7 +234,7 @@ impl Pushable for bool {
 
 impl Pushable for LuaFunc {
     unsafe fn push(&self, state: *mut LuaState) {
-        lua_pushcclosure(state, *self as _, 0);
+        lua_pushcclosure(state, self.0 as _, 0);
     }
 }
 
@@ -290,7 +298,7 @@ pub unsafe fn preload_module<P: Pushable>(state: *mut LuaState, name: &'static s
     value.push(state);
 
     // Push our function to the stack
-    let func: LuaFunc = lua_return_values;
+    let func = LuaFunc(lua_return_values);
 
     state.push_closure(func, 1);
 
