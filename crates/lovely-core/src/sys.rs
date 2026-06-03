@@ -12,7 +12,7 @@ use log::info;
 pub static LUA: OnceLock<LuaLib> = OnceLock::new();
 
 pub type LuaState = c_void;
-pub type LuaFunc = unsafe extern "C" fn(*mut LuaState) -> c_int;
+pub type LuaFunc = unsafe extern "C-unwind" fn(*mut LuaState) -> c_int;
 
 pub const LUA_GLOBALSINDEX: c_int = -10002;
 pub const LUA_TNIL: c_int = 0;
@@ -25,19 +25,19 @@ pub const fn lua_upvalueindex(i: c_int) -> c_int {
 macro_rules! generate {
     ($libname:ident {
         $(
-            $vis:vis unsafe extern "C" fn $method:ident($($arg:ident: $ty:ty),*) $(-> $ret:ty)?;
+            $vis:vis unsafe extern "C-unwind" fn $method:ident($($arg:ident: $ty:ty),*) $(-> $ret:ty)?;
         )*
     }) => {
         #[repr(C)]
         pub struct $libname {
             $(
-                $vis $method: unsafe extern "C" fn($($arg: $ty),*) $(-> $ret)?,
+                $vis $method: unsafe extern "C-unwind" fn($($arg: $ty),*) $(-> $ret)?,
             )*
         }
 
         $(
             /// # Safety
-            $vis unsafe extern "C" fn $method($($arg: $ty),*) $(-> $ret)? {
+            $vis unsafe extern "C-unwind" fn $method($($arg: $ty),*) $(-> $ret)? {
                 let lua = LUA.get().unwrap_or_else(|| panic!("Failed to access Lua lib defs"));
                 (lua.$method)($($arg),*)
             }
@@ -46,14 +46,12 @@ macro_rules! generate {
 }
 
 // TODO: Can we make this work with variable number of upvalues?
-unsafe extern "C" fn lua_return_values(state: *mut LuaState) -> c_int {
+unsafe extern "C-unwind" fn lua_return_values(state: *mut LuaState) -> c_int {
     let index = lua_upvalueindex(1);
     lua_pushvalue(state, index);
     1
 }
 
-// HACK: Panics if not inlined?
-#[inline(always)]
 pub(crate) unsafe fn check_lua_string(state: *mut LuaState, index: c_int) -> String {
     let mut str_len = 0usize;
     let arg_str = lual_checklstring(state, index, &mut str_len);
@@ -63,24 +61,24 @@ pub(crate) unsafe fn check_lua_string(state: *mut LuaState, index: c_int) -> Str
 }
 
 generate! (LuaLib {
-    pub unsafe extern "C" fn lua_call(state: *mut LuaState, nargs: c_int, nresults: c_int);
-    pub unsafe extern "C" fn lua_pcall(state: *mut LuaState, nargs: c_int, nresults: c_int, errfunc: c_int) -> c_int;
-    pub unsafe extern "C" fn lua_getfield(state: *mut LuaState, index: c_int, k: *const c_char);
-    pub unsafe extern "C" fn lua_setfield(state: *mut LuaState, index: c_int, k: *const c_char);
-    pub unsafe extern "C" fn lua_gettop(state: *mut LuaState) -> c_int;
-    pub unsafe extern "C" fn lua_settop(state: *mut LuaState, index: c_int);
-    pub unsafe extern "C" fn lua_pushvalue(state: *mut LuaState, index: c_int);
-    pub unsafe extern "C" fn lua_pushcclosure(state: *mut LuaState, f: LuaFunc, n: c_int);
-    pub unsafe extern "C" fn lua_tolstring(state: *mut LuaState, index: c_int, len: *mut usize) -> *const c_char;
-    pub unsafe extern "C" fn lua_type(state: *mut LuaState, index: c_int) -> c_int;
-    pub unsafe extern "C" fn lua_pushstring(state: *mut LuaState, string: *const char);
-    pub unsafe extern "C" fn lua_pushnumber(state: *mut LuaState, number: f64);
-    pub unsafe extern "C" fn lua_pushboolean(state: *mut LuaState, b: c_int);
-    pub unsafe extern "C" fn lua_settable(state: *mut LuaState, index: c_int);
-    pub unsafe extern "C" fn lua_createtable(state: *mut LuaState, narr: c_int, nrec: c_int);
-    pub unsafe extern "C" fn lua_error(state: *mut LuaState) -> c_int;
-    pub unsafe extern "C" fn lual_register(state: *mut LuaState, libname: *const char, l: *const c_void);
-    pub unsafe extern "C" fn lual_checklstring(state: *mut LuaState, index: c_int, len: *mut usize) -> *const char;
+    pub unsafe extern "C-unwind" fn lua_call(state: *mut LuaState, nargs: c_int, nresults: c_int);
+    pub unsafe extern "C-unwind" fn lua_pcall(state: *mut LuaState, nargs: c_int, nresults: c_int, errfunc: c_int) -> c_int;
+    pub unsafe extern "C-unwind" fn lua_getfield(state: *mut LuaState, index: c_int, k: *const c_char);
+    pub unsafe extern "C-unwind" fn lua_setfield(state: *mut LuaState, index: c_int, k: *const c_char);
+    pub unsafe extern "C-unwind" fn lua_gettop(state: *mut LuaState) -> c_int;
+    pub unsafe extern "C-unwind" fn lua_settop(state: *mut LuaState, index: c_int);
+    pub unsafe extern "C-unwind" fn lua_pushvalue(state: *mut LuaState, index: c_int);
+    pub unsafe extern "C-unwind" fn lua_pushcclosure(state: *mut LuaState, f: LuaFunc, n: c_int);
+    pub unsafe extern "C-unwind" fn lua_tolstring(state: *mut LuaState, index: c_int, len: *mut usize) -> *const c_char;
+    pub unsafe extern "C-unwind" fn lua_type(state: *mut LuaState, index: c_int) -> c_int;
+    pub unsafe extern "C-unwind" fn lua_pushstring(state: *mut LuaState, string: *const char);
+    pub unsafe extern "C-unwind" fn lua_pushnumber(state: *mut LuaState, number: f64);
+    pub unsafe extern "C-unwind" fn lua_pushboolean(state: *mut LuaState, b: c_int);
+    pub unsafe extern "C-unwind" fn lua_settable(state: *mut LuaState, index: c_int);
+    pub unsafe extern "C-unwind" fn lua_createtable(state: *mut LuaState, narr: c_int, nrec: c_int);
+    pub unsafe extern "C-unwind" fn lua_error(state: *mut LuaState) -> c_int;
+    pub unsafe extern "C-unwind" fn lual_register(state: *mut LuaState, libname: *const char, l: *const c_void);
+    pub unsafe extern "C-unwind" fn lual_checklstring(state: *mut LuaState, index: c_int, len: *mut usize) -> *const char;
 });
 
 impl LuaLib {
@@ -315,7 +313,7 @@ pub(crate) unsafe fn is_module_preloaded(state: *mut LuaState, name: &str) -> bo
 /// An override print function, copied piecemeal from the Lua 5.1 source, but in Rust.
 /// # Safety
 /// Native lua API access. It's unsafe, it's unchecked, it will probably eat your firstborn.
-pub unsafe extern "C" fn override_print(state: *mut LuaState) -> c_int {
+pub unsafe extern "C-unwind" fn override_print(state: *mut LuaState) -> c_int {
     let argc = lua_gettop(state);
     let mut out = VecDeque::new();
 
@@ -347,7 +345,7 @@ pub unsafe extern "C" fn override_print(state: *mut LuaState) -> c_int {
 /// be used to wrap lua values into a closure which returns that value.
 /// # Safety
 /// Makes some FFI calls, mutates internal C lua state.
-pub unsafe extern "C" fn lua_identity_closure(state: *mut LuaState) -> c_int {
+pub unsafe extern "C-unwind" fn lua_identity_closure(state: *mut LuaState) -> c_int {
     // LUA_GLOBALSINDEX - 1 is where the first upvalue is located
     lua_pushvalue(state, LUA_GLOBALSINDEX - 1);
     // We just return that value
@@ -358,7 +356,7 @@ pub unsafe extern "C" fn lua_identity_closure(state: *mut LuaState) -> c_int {
 /// be used to wrap lua values into a closure which throws that value.
 /// # Safety
 /// Makes some FFI calls, mutates internal C lua state.
-pub unsafe extern "C" fn lua_err_identity_closure(state: *mut LuaState) -> c_int {
+pub unsafe extern "C-unwind" fn lua_err_identity_closure(state: *mut LuaState) -> c_int {
     // LUA_GLOBALSINDEX - 1 is where the first upvalue is located
     lua_pushvalue(state, LUA_GLOBALSINDEX - 1);
     lua_error(state)
