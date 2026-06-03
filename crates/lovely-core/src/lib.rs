@@ -34,7 +34,7 @@ pub static RUNTIME: OnceLock<Lovely> = OnceLock::new();
 type LoadBuffer =
     dyn Fn(*mut LuaState, *const u8, usize, *const u8, *const u8) -> u32 + Send + Sync + 'static;
 
-unsafe extern "C" fn reload_patches(state: *mut LuaState) -> c_int {
+unsafe extern "C-unwind" fn reload_patches(state: *mut LuaState) -> c_int {
     let lovely = &RUNTIME.get().unwrap();
     let result = PatchTable::load(&lovely.mod_dir);
     let new_table = match result {
@@ -52,7 +52,7 @@ unsafe extern "C" fn reload_patches(state: *mut LuaState) -> c_int {
     1
 }
 
-unsafe extern "C" fn getvar(state: *mut LuaState) -> c_int {
+unsafe extern "C-unwind" fn getvar(state: *mut LuaState) -> c_int {
     let key = check_lua_string(state, 1);
     let lovely = &RUNTIME.get().unwrap();
     let vars = lovely.lua_vars.read().unwrap();
@@ -64,7 +64,7 @@ unsafe extern "C" fn getvar(state: *mut LuaState) -> c_int {
     0
 }
 
-unsafe extern "C" fn setvar(state: *mut LuaState) -> c_int {
+unsafe extern "C-unwind" fn setvar(state: *mut LuaState) -> c_int {
     let key = check_lua_string(state, 1);
     let val = check_lua_string(state, 2);
     let lovely = &RUNTIME.get().unwrap();
@@ -73,7 +73,7 @@ unsafe extern "C" fn setvar(state: *mut LuaState) -> c_int {
     0
 }
 
-unsafe extern "C" fn removevar(state: *mut LuaState) -> c_int {
+unsafe extern "C-unwind" fn removevar(state: *mut LuaState) -> c_int {
     let key = check_lua_string(state, 1);
     let lovely = &RUNTIME.get().unwrap();
     let mut vars = lovely.lua_vars.write().unwrap();
@@ -328,7 +328,7 @@ impl Lovely {
 // Import PatchTable from the new location
 use crate::patch::table::PatchTable;
 
-unsafe extern "C" fn apply_patches(lua_state: *mut LuaState) -> c_int {
+unsafe extern "C-unwind" fn apply_patches(lua_state: *mut LuaState) -> c_int {
     let buf_name = check_lua_string(lua_state, 1);
     let buf = check_lua_string(lua_state, 2);
     let mut num = 1;

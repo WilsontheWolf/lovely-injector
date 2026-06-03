@@ -732,6 +732,7 @@ dependencies = [
  "libc",
  "libloading",
  "log",
+ "mlua-sys",
  "regex-cursor",
  "regex-lite",
  "serde",
@@ -768,6 +769,34 @@ dependencies = [
  "retour",
  "widestring",
  "windows",
+]
+
+[[package]]
+name = "lua-src"
+version = "550.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75c110c2fa33f34e0de05448e1f3eb2e0631e7a69e2d8ae1586cffc9fc9f9949"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "luajit-src"
+version = "210.7.2+b925b3e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "920cf654b23d217c550ceea57c32cd2a413ea27b6d47ed77b5ee0cf655adefa6"
+dependencies = [
+ "cc",
+ "which",
+]
+
+[[package]]
+name = "luau0-src"
+version = "0.20.3+luau723"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcbb400b4091c9b9f5559e4a2c91757cf402bc21dd54a99f3a823c09a383cd2d"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -812,6 +841,20 @@ checksum = "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316"
 dependencies = [
  "adler2",
  "simd-adler32",
+]
+
+[[package]]
+name = "mlua-sys"
+version = "0.11.0-rc.1"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc",
+ "libloading",
+ "lua-src",
+ "luajit-src",
+ "luau0-src",
+ "pkg-config",
 ]
 
 [[package]]
@@ -1375,6 +1418,15 @@ name = "wasm-bindgen-shared"
 version = "0.2.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af190c94f2773fdb3729c55b007a722abb5384da03bc0986df4c289bf5567e96"
+
+[[package]]
+name = "which"
+version = "8.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81995fafaaaf6ae47a7d0cc83c67caf92aeb7e5331650ae6ff856f7c0c60c459"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "widestring"
