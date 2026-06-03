@@ -15,8 +15,9 @@ use getargs::{Arg, Options};
 use itertools::Itertools;
 use patch::{ModulePatch, Patch};
 use regex_lite::Regex;
+use mlua::{Lua, Function};
 
-use sys::{check_lua_string, LuaFunc, LuaLib, LuaState, LuaStateTrait, LUA};
+use sys::{check_lua_string, LuaFunc, LuaLib, LuaState, LuaStateTrait, LUA, lua_error};
 
 use crate::patch::Target;
 use crate::dump::{PatchDebug, write_dump};
@@ -82,6 +83,27 @@ unsafe extern "C-unwind" fn removevar(state: *mut LuaState) -> c_int {
         state.push(val);
         return 1;
     }
+    0
+}
+
+unsafe extern "C-unwind" fn testing(state: *mut LuaState) -> c_int {
+
+    // HACK: Don't have a great way to expose mlua types yet
+    let lua = Lua::get_or_init_from_ptr(state);
+
+    let func = lua
+        .create_function(|lua, ()| -> Result<String, _>{
+            let lovely = &RUNTIME.get().unwrap();
+
+            let binding = Arc::clone(&lovely.patch_table);
+            let _patch_table = binding.read().unwrap();
+            panic!("Hi")
+        })
+    .unwrap();
+
+    let globals = lua.globals();
+
+    globals.set("Test", func).unwrap();
     0
 }
 
@@ -265,7 +287,7 @@ impl Lovely {
                         Patch::Module(patch) => Some((patch, prio, path)),
                         _ => None,
                     })
-                    .filter(|(x, _, _)| !x.load_now)
+                .filter(|(x, _, _)| !x.load_now)
                     .sorted_by_key(|(_, &prio, _)| prio)
                     .map(|(x, _, path)| (x, path))
                     .collect();

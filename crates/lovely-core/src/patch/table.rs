@@ -59,7 +59,7 @@ impl PatchTable {
         let repo = "https://github.com/ethangreen-dev/lovely-injector";
 
         // Import the functions needed for injection
-        use crate::{apply_patches, get_log_path, getvar, reload_patches, removevar, setvar};
+        use crate::{apply_patches, get_log_path, getvar, reload_patches, removevar, testing, setvar};
 
         preload_module(
             state,
@@ -73,6 +73,7 @@ impl PatchTable {
                 .add_var("set_var", setvar as LuaFunc)
                 .add_var("get_var", getvar as LuaFunc)
                 .add_var("remove_var", removevar as LuaFunc)
+                .add_var("test", testing as LuaFunc)
                 .add_var("log_path", get_log_path().unwrap()),
         );
     }
