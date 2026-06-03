@@ -59,7 +59,7 @@ unsafe extern "system" fn DllMain(_: HINSTANCE, reason: u32, _: *const c_void) -
             MESSAGEBOX_STYLE(0),
         );
         
-        std::process::abort();
+        // std::process::abort();
     }));
 
     let args = env::args().collect_vec();
@@ -99,7 +99,7 @@ unsafe extern "system" fn DllMain(_: HINSTANCE, reason: u32, _: *const c_void) -
     let proc = GetProcAddress(handle, s!("luaL_loadbufferx")).unwrap();
     let fn_target = std::mem::transmute::<
         unsafe extern "system" fn() -> isize, 
-        unsafe extern "C" fn(*mut std::ffi::c_void, *const u8, usize, *const u8, *const u8) -> u32
+        unsafe extern "C" fn(*mut LuaState, *const u8, usize, *const u8, *const u8) -> u32
     >(proc);
 
     LuaLoadbufferx_Detour
@@ -113,7 +113,7 @@ unsafe extern "system" fn DllMain(_: HINSTANCE, reason: u32, _: *const c_void) -
     let proc = GetProcAddress(handle, s!("luaL_loadbuffer")).unwrap();
     let fn_target = std::mem::transmute::<
         unsafe extern "system" fn() -> isize, 
-        unsafe extern "C" fn(*mut std::ffi::c_void, *const u8, usize, *const u8) -> u32
+        unsafe extern "C" fn(*mut LuaState, *const u8, usize, *const u8) -> u32
     >(proc);
 
     LuaLoadbuffer_Detour
