@@ -1,12 +1,12 @@
 use std::collections::VecDeque;
-use std::ffi::{c_char, c_int, c_void, CString};
+use std::ffi::{c_int, CString};
 use std::ptr;
 use std::slice;
+use mlua::Lua;
 
 use itertools::Itertools;
 pub use mlua_sys::*;
 use log::info;
-
 
 pub type LuaState = lua_State; // TODO: Remove this shim
 pub type LuaFunc = lua_CFunction;
@@ -108,56 +108,11 @@ impl Pushable for LuaFunc {
     }
 }
 
-pub struct LuaVar<P>
-where
-    P: std::ops::Deref,
-    P::Target: Pushable,
-{
-    name: String,
-    val: P,
-}
-
-pub struct LuaTable {
-    var: Vec<LuaVar<Box<dyn Pushable>>>,
-}
-
-impl LuaTable {
-    pub(crate) fn new() -> Self {
-        LuaTable { var: vec![] }
-    }
-
-    /// Add a variable to this Lua module.
-    pub fn add_var<P: Pushable + 'static>(self, name: &'static str, val: P) -> Self {
-        let name = format!("{name}\0");
-        let mut var = self.var;
-        let val = Box::new(val);
-        var.push(LuaVar { name, val });
-
-        LuaTable { var }
-    }
-}
-
-impl Pushable for LuaTable {
-    unsafe fn push(&self, state: *mut LuaState) {
-        // Create a table at the top of the stack.
-        lua_createtable(state, 0, self.var.len().try_into().unwrap());
-
-        for lua_var in self.var.iter() {
-            // Push the var name and value onto the stack.
-            lua_pushstring(state, lua_var.name.as_ptr() as _);
-            lua_var.val.push(state);
-
-            // Set the table key:val from what we previously pushed onto the stack.
-            lua_settable(state, -3);
-        }
-    }
-}
-
 /// Commit this Lua module to native Lua state.
 ///
 /// # Safety
 /// Directly interacts and mutates native Lua state.
-pub unsafe fn preload_module<P: Pushable>(state: *mut LuaState, name: &'static str, value: P) {
+pub unsafe fn preload_module(state: *mut LuaState, name: &'static str, value: impl mlua::IntoLua) {
     let top = lua_gettop(state);
 
     // Get the package.preloads
@@ -166,7 +121,15 @@ pub unsafe fn preload_module<P: Pushable>(state: *mut LuaState, name: &'static s
     let preload_index = lua_gettop(state);
 
     // Push the value to the stack
-    value.push(state);
+    // HACK: This is a messy solution cause we're half mlua
+    {
+        let lua = Lua::get_or_init_from_ptr(state);
+
+        lua.exec_raw_lua(|rawlua| {
+            value.push_into_stack(rawlua).unwrap();
+        });
+    }
+
 
     // Push our function to the stack
     let func: LuaFunc = lua_return_values;

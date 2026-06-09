@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 use crate::dump::{ByteDebugEntry, PatchDebug};
 use crate::patch::{loader, vars};
 use crate::patch::{Patch, Priority};
-use crate::sys::{preload_module, LuaFunc, LuaState, LuaTable};
+use crate::sys::{preload_module, LuaState};
+use mlua::Lua;
 use crop::Rope;
 use itertools::Itertools;
 use log::*;
@@ -59,22 +60,24 @@ impl PatchTable {
         let repo = "https://github.com/ethangreen-dev/lovely-injector";
 
         // Import the functions needed for injection
-        use crate::{apply_patches, get_log_path, getvar, reload_patches, removevar, testing, setvar};
+        use crate::{apply_patches, get_log_path, getvar, reload_patches, removevar, setvar};
 
+        let lua = Lua::get_or_init_from_ptr(state);
+
+        let table = lua.create_table().unwrap();
+            table.set("repo", repo).unwrap();
+            table.set("version", env!("CARGO_PKG_VERSION")).unwrap();
+            table.set("mod_dir", mod_dir).unwrap();
+            table.set("reload_patches", lua.create_c_function(reload_patches).unwrap()).unwrap();
+            table.set("apply_patches", lua.create_function(apply_patches).unwrap()).unwrap();
+            table.set("set_var", lua.create_c_function(setvar).unwrap()).unwrap();
+            table.set("get_var", lua.create_c_function(getvar).unwrap()).unwrap();
+            table.set("remove_var", lua.create_c_function(removevar).unwrap()).unwrap();
+            table.set("log_path", get_log_path().unwrap()).unwrap();
         preload_module(
             state,
             "lovely",
-            LuaTable::new()
-                .add_var("repo", repo)
-                .add_var("version", env!("CARGO_PKG_VERSION"))
-                .add_var("mod_dir", mod_dir)
-                .add_var("reload_patches", reload_patches as LuaFunc)
-                .add_var("apply_patches", apply_patches as LuaFunc)
-                .add_var("set_var", setvar as LuaFunc)
-                .add_var("get_var", getvar as LuaFunc)
-                .add_var("remove_var", removevar as LuaFunc)
-                .add_var("test", testing as LuaFunc)
-                .add_var("log_path", get_log_path().unwrap()),
+            table
         );
     }
 
@@ -97,7 +100,7 @@ impl PatchTable {
                 Patch::Module(patch) => Some((patch, prio, path)),
                 _ => None,
             })
-            .filter(|(x, _, _)| x.load_now)
+        .filter(|(x, _, _)| x.load_now)
             .sorted_by_key(|(_, &prio, _)| prio)
             .map(|(x, _, path)| (x, path));
 
@@ -108,7 +111,7 @@ impl PatchTable {
                 Patch::Copy(patch) => Some((patch, prio, path)),
                 _ => None,
             })
-            .sorted_by_key(|(_, &prio, _)| prio)
+        .sorted_by_key(|(_, &prio, _)| prio)
             .map(|(x, _, path)| (x, path));
 
         let pattern_and_regex = self
@@ -117,8 +120,8 @@ impl PatchTable {
             .filter(|(patch, _, _)| matches!(patch, Patch::Pattern(..)))
             .chain(
                 self.patches
-                    .iter()
-                    .filter(|(patch, _, _)| matches!(patch, Patch::Regex(..))),
+                .iter()
+                .filter(|(patch, _, _)| matches!(patch, Patch::Regex(..))),
             )
             .sorted_by_key(|(_, prio, _)| prio)
             .map(|(patch, _, path)| (patch, path))

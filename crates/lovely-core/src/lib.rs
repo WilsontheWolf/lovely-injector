@@ -15,9 +15,9 @@ use getargs::{Arg, Options};
 use itertools::Itertools;
 use patch::{ModulePatch, Patch};
 use regex_lite::Regex;
-use mlua::{Lua, Function};
+use mlua::Lua;
 
-use sys::{check_lua_string, LuaFunc, LuaLib, LuaState, LuaStateTrait, LUA, lua_error};
+use sys::{check_lua_string, LuaFunc, LuaLib, LuaState, LuaStateTrait, LUA};
 
 use crate::patch::Target;
 use crate::dump::write_dump;
@@ -83,27 +83,6 @@ unsafe extern "C-unwind" fn removevar(state: *mut LuaState) -> c_int {
         state.push(val);
         return 1;
     }
-    0
-}
-
-unsafe extern "C-unwind" fn testing(state: *mut LuaState) -> c_int {
-
-    // HACK: Don't have a great way to expose mlua types yet
-    let lua = Lua::get_or_init_from_ptr(state);
-
-    let func = lua
-        .create_function(|lua, ()| -> Result<String, _>{
-            let lovely = &RUNTIME.get().unwrap();
-
-            let binding = Arc::clone(&lovely.patch_table);
-            let _patch_table = binding.read().unwrap();
-            panic!("Hi")
-        })
-    .unwrap();
-
-    let globals = lua.globals();
-
-    globals.set("Test", func).unwrap();
     0
 }
 
@@ -350,32 +329,24 @@ impl Lovely {
 // Import PatchTable from the new location
 use crate::patch::table::PatchTable;
 
-unsafe extern "C-unwind" fn apply_patches(lua_state: *mut LuaState) -> c_int {
-    let buf_name = check_lua_string(lua_state, 1);
-    let buf = check_lua_string(lua_state, 2);
-    let mut num = 1;
-    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        let binding = RUNTIME.get().unwrap().patch_table.read().unwrap();
-        if binding.needs_patching(&buf_name) {
-            let res = binding.apply_patches(&buf_name, &buf, lua_state);
-            if res.is_err() {
-                lua_state.push(false);
-                lua_state.push(res.unwrap_err());
-                num = 2;
-                return;
-            }
-            let (patched, _debug) = res.unwrap();
-            lua_state.push(patched);
-        } else {
-            lua_state.push(buf)
-        }
-    }));
-    if result.is_ok() {
-        num
+fn apply_patches(lua: &Lua, (name, buf): (String, String)) -> mlua::Result<anyhow::Result<String>> {
+    let binding = RUNTIME.get().unwrap().patch_table.read().unwrap();
+    if binding.needs_patching(&name) {
+        let res = unsafe {
+            let mut val = None;
+            lua.exec_raw_lua(|rawlua| {
+                let state = rawlua.state();
+                val = Some(binding.apply_patches(&name, &buf, state));
+            });
+            val.unwrap()
+        };
+
+        return match res {
+            Ok((patched, _debug)) => Ok(Ok(patched)),
+            Err(e) => Ok(Err(anyhow::anyhow!(e)))
+        };
     } else {
-        lua_state.push(false);
-        lua_state.push("Internal lovely error: Failed to acquire the lovely runtime");
-        2
+        return Ok(Ok(buf));
     }
 }
 
