@@ -347,16 +347,19 @@ generate! (LuaLib {
 
 }
 raw {
-    pub lua_pushfstring: unsafe extern "C-unwind" fn(L: *mut lua_State, fmt: *const c_char, ...) -> *const c_char,
-    pub luaL_error: unsafe extern "C-unwind" fn (L: *mut lua_State, fmt: *const c_char, ...) -> c_int,
+    pub lua_pushvfstring: unsafe extern "C-unwind" fn(L: *mut lua_State, fmt: *const c_char, args: core::ffi::VaList) -> *const c_char,
 });
 pub unsafe extern "C-unwind" fn lua_pushfstring(L: *mut lua_State, fmt: *const c_char, mut args: ...) -> *const c_char {
     let lua = LUA.get().unwrap_or_else(|| panic!("Failed to access Lua lib defs"));
-    (lua.lua_pushfstring)(L, fmt, args.as_va_list())
+    (lua.lua_pushvfstring)(L, fmt, args.as_va_list())
 }
+// Reimplementation cause rust is stupid with variable args
 pub unsafe extern "C-unwind" fn luaL_error(L: *mut lua_State, fmt: *const c_char, mut args: ...) -> c_int {
     let lua = LUA.get().unwrap_or_else(|| panic!("Failed to access Lua lib defs"));
-    (lua.luaL_error)(L, fmt, args.as_va_list())
+    luaL_where(L, 1);
+    (lua.lua_pushvfstring)(L, fmt, args.as_va_list());
+    lua_concat(L, 2);
+    lua_error(L);
 }
 
 impl LuaLib {
@@ -400,7 +403,7 @@ impl LuaLib {
             lua_pushinteger: *library.get(b"lua_pushinteger").unwrap(),
             lua_pushlstring_: *library.get(b"lua_pushlstring").unwrap(),
             lua_pushstring_: *library.get(b"lua_pushstring").unwrap(),
-            lua_pushfstring: *library.get(b"lua_pushfstring").unwrap(),
+            lua_pushvfstring: *library.get(b"lua_pushvfstring").unwrap(),
             lua_pushcclosure: *library.get(b"lua_pushcclosure").unwrap(),
             lua_pushboolean: *library.get(b"lua_pushboolean").unwrap(),
             lua_pushlightuserdata: *library.get(b"lua_pushlightuserdata").unwrap(),
@@ -460,7 +463,6 @@ impl LuaLib {
             luaL_newmetatable_: *library.get(b"luaL_newmetatable").unwrap(),
             luaL_checkudata: *library.get(b"luaL_checkudata").unwrap(),
             luaL_where: *library.get(b"luaL_where").unwrap(),
-            luaL_error: *library.get(b"luaL_error").unwrap(),
             luaL_checkoption: *library.get(b"luaL_checkoption").unwrap(),
             luaL_ref: *library.get(b"luaL_ref").unwrap(),
             luaL_unref: *library.get(b"luaL_unref").unwrap(),

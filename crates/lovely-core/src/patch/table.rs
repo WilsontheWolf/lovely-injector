@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::dump::{ByteDebugEntry, PatchDebug};
 use crate::patch::{loader, vars};
 use crate::patch::{Patch, Priority};
-use crate::sys::{preload_module, LuaState};
+use crate::sys::{preload_module, LuaState, no_err};
 use mlua::Lua;
 use crop::Rope;
 use itertools::Itertools;
@@ -60,20 +60,21 @@ impl PatchTable {
         let repo = "https://github.com/ethangreen-dev/lovely-injector";
 
         // Import the functions needed for injection
-        use crate::{apply_patches, get_log_path, getvar, reload_patches, removevar, setvar};
+        use crate::{apply_patches, get_log_path, get_var, reload_patches, remove_var, set_var};
 
         let lua = Lua::get_or_init_from_ptr(state);
 
         let table = lua.create_table().unwrap();
-            table.set("repo", repo).unwrap();
-            table.set("version", env!("CARGO_PKG_VERSION")).unwrap();
-            table.set("mod_dir", mod_dir).unwrap();
-            table.set("reload_patches", lua.create_c_function(reload_patches).unwrap()).unwrap();
-            table.set("apply_patches", lua.create_function(apply_patches).unwrap()).unwrap();
-            table.set("set_var", lua.create_c_function(setvar).unwrap()).unwrap();
-            table.set("get_var", lua.create_c_function(getvar).unwrap()).unwrap();
-            table.set("remove_var", lua.create_c_function(removevar).unwrap()).unwrap();
-            table.set("log_path", get_log_path().unwrap()).unwrap();
+        table.set("repo", repo).unwrap();
+        table.set("version", env!("CARGO_PKG_VERSION")).unwrap();
+        table.set("mod_dir", mod_dir).unwrap();
+        table.set("reload_patches", lua.create_function(no_err(reload_patches)).unwrap()).unwrap();
+        table.set("apply_patches", lua.create_function(no_err(apply_patches)).unwrap()).unwrap();
+        table.set("set_var", lua.create_function(no_err(set_var)).unwrap()).unwrap();
+        table.set("get_var", lua.create_function(no_err(get_var)).unwrap()).unwrap();
+        table.set("remove_var", lua.create_function(no_err(remove_var)).unwrap()).unwrap();
+        table.set("log_path", get_log_path().unwrap()).unwrap();
+
         preload_module(
             state,
             "lovely",
@@ -90,7 +91,7 @@ impl PatchTable {
         target: &str,
         buffer: &str,
         lua_state: *mut LuaState,
-    ) -> Result<(String, PatchDebug), String> { // Buffer Content, Debug info, Error message
+    ) -> anyhow::Result<(String, PatchDebug)> { // Buffer Content, Debug info, Error message
         let target = target.strip_prefix('@').unwrap_or(target);
 
         let module_patches = self
