@@ -14,26 +14,12 @@ pub type LuaFunc = lua_CFunction;
 pub const LUA_GLOBALSINDEX: c_int = -10002;
 pub const LUA_TNIL: c_int = 0;
 pub const LUA_TBOOLEAN: c_int = 1;
-pub const fn lua_upvalueindex(i: c_int) -> c_int {
-    // This is a macro in lua
-    LUA_GLOBALSINDEX - i
-}
 
 // TODO: Can we make this work with variable number of upvalues?
 unsafe extern "C-unwind" fn lua_return_values(state: *mut LuaState) -> c_int {
     let index = lua_upvalueindex(1);
     lua_pushvalue(state, index);
     1
-}
-
-// HACK: Panics if not inlined?
-#[inline(always)]
-pub(crate) unsafe fn check_lua_string(state: *mut LuaState, index: c_int) -> String {
-    let mut str_len = 0usize;
-    let arg_str = luaL_checklstring(state, index, &mut str_len);
-
-    let str_buf = slice::from_raw_parts(arg_str as *const u8, str_len);
-    String::from_utf8_lossy(str_buf).to_string()
 }
 
 // TODO: implement all lua methods on this(?)
@@ -250,4 +236,13 @@ pub unsafe extern "C-unwind" fn lua_err_identity_closure(state: *mut LuaState) -
     // LUA_GLOBALSINDEX - 1 is where the first upvalue is located
     lua_pushvalue(state, LUA_GLOBALSINDEX - 1);
     lua_error(state)
+}
+
+pub fn no_err<F, A, R>(func: F) -> impl Fn(&Lua, A) -> mlua::Result<R> + mlua::MaybeSend + 'static
+where
+F: Fn(&Lua, A) -> R + mlua::MaybeSend + 'static,
+    A: mlua::FromLuaMulti,
+    R: mlua::IntoLuaMulti,
+{
+    move |lua, args| Ok(func(lua, args))
 }

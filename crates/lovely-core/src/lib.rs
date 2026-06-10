@@ -2,7 +2,7 @@
 
 use core::slice;
 use std::collections::{HashMap, HashSet};
-use std::ffi::{c_int, CStr};
+use std::ffi::{CStr};
 use std::panic;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
@@ -17,7 +17,7 @@ use patch::{ModulePatch, Patch};
 use regex_lite::Regex;
 use mlua::Lua;
 
-use sys::{check_lua_string, LuaFunc, LuaLib, LuaState, LuaStateTrait, LUA};
+use sys::{LuaFunc, LuaLib, LuaState, LuaStateTrait, LUA};
 
 use crate::patch::Target;
 use crate::dump::{PatchDebug, write_dump};
@@ -35,55 +35,34 @@ pub static RUNTIME: OnceLock<Lovely> = OnceLock::new();
 type LoadBuffer =
     dyn Fn(*mut LuaState, *const u8, usize, *const u8, *const u8) -> u32 + Send + Sync + 'static;
 
-unsafe extern "C-unwind" fn reload_patches(state: *mut LuaState) -> c_int {
+fn reload_patches(_lua: &Lua, _: ()) -> anyhow::Result<bool> {
     let lovely = &RUNTIME.get().unwrap();
-    let result = PatchTable::load(&lovely.mod_dir);
-    let new_table = match result {
-        Ok(t) => t,
-        Err(e) => {
-            state.push(false);
-            state.push(format!("{:?}", e));
-            return 2;
-        }
-    };
+    let new_table = PatchTable::load(&lovely.mod_dir)?;
     let binding = Arc::clone(&lovely.patch_table);
     let mut patch_table = binding.write().unwrap();
     *patch_table = new_table;
-    state.push(true);
-    1
+    Ok(true)
 }
 
-unsafe extern "C-unwind" fn getvar(state: *mut LuaState) -> c_int {
-    let key = check_lua_string(state, 1);
+fn get_var(_lua: &Lua, key: String) -> Option<String> {
+    info!("{:?}", _lua.traceback(None, 0));
     let lovely = &RUNTIME.get().unwrap();
     let vars = lovely.lua_vars.read().unwrap();
     let val = vars.get(&key);
-    if let Some(val) = val {
-        state.push(val);
-        return 1;
-    }
-    0
+    val.cloned()
 }
 
-unsafe extern "C-unwind" fn setvar(state: *mut LuaState) -> c_int {
-    let key = check_lua_string(state, 1);
-    let val = check_lua_string(state, 2);
+fn set_var(_lua: &Lua, (key, val): (String, String)) {
     let lovely = &RUNTIME.get().unwrap();
     let mut vars = lovely.lua_vars.write().unwrap();
     vars.insert(key, val);
-    0
 }
 
-unsafe extern "C-unwind" fn removevar(state: *mut LuaState) -> c_int {
-    let key = check_lua_string(state, 1);
+fn remove_var(_lua: &Lua, key: String) -> Option<String> {
     let lovely = &RUNTIME.get().unwrap();
     let mut vars = lovely.lua_vars.write().unwrap();
     let val = vars.remove(&key);
-    if let Some(val) = val {
-        state.push(val);
-        return 1;
-    }
-    0
+    val
 }
 
 pub struct Lovely {
@@ -313,7 +292,7 @@ impl Lovely {
         // Apply patches onto this buffer.
         let res = patch_table.apply_patches(name, buf_str, state);
         if res.is_err() {
-            state.push(res.unwrap_err());
+            state.push(format!("{:?}", res.unwrap_err()));
             // NOTE: Not really a great error but it doesn't handle the correcter errors right.
             return 3; // LUA_ERRSYNTAX
         }
@@ -329,24 +308,20 @@ impl Lovely {
 // Import PatchTable from the new location
 use crate::patch::table::PatchTable;
 
-fn apply_patches(lua: &Lua, (name, buf): (String, String)) -> mlua::Result<anyhow::Result<String>> {
+fn apply_patches(lua: &Lua, (name, buf): (String, String)) -> anyhow::Result<String> {
     let binding = RUNTIME.get().unwrap().patch_table.read().unwrap();
     if binding.needs_patching(&name) {
         let res = unsafe {
-            let mut val = None;
             lua.exec_raw_lua(|rawlua| {
                 let state = rawlua.state();
-                val = Some(binding.apply_patches(&name, &buf, state));
-            });
-            val.unwrap()
+                binding.apply_patches(&name, &buf, state)
+            })
         };
 
-        return match res {
-            Ok((patched, _debug)) => Ok(Ok(patched)),
-            Err(e) => Ok(Err(anyhow::anyhow!(e)))
-        };
+        let (patched, _debug) = res?;
+        return Ok(patched);
     } else {
-        return Ok(Ok(buf));
+        return Ok(buf);
     }
 }
 
