@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, Context};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -163,7 +163,7 @@ impl PatchTable {
         for (patch, path) in pattern_and_regex {
             let result = match patch {
                 Patch::Pattern(x) => x.apply(target, &mut rope, path),
-                Patch::Regex(x) => x.apply(target, &mut rope, path),
+                Patch::Regex(x) => x.apply(target, &mut rope, path)?,
                 _ => unreachable!(),
             };
 
@@ -192,7 +192,7 @@ impl PatchTable {
         // TODO I don't think it's necessary to split into lines
         // and convert the rope to Strings? seems overcomplicated
         for line in patched_lines.iter_mut() {
-            vars::apply_var_interp(line, &self.vars);
+            vars::apply_var_interp(line, &self.vars).with_context(|| format!("Failed to interpolate lovely variable in {:?}", target))?;
         }
 
         let patched = patched_lines.concat();
