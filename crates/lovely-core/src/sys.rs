@@ -57,22 +57,19 @@ pub trait Pushable {
 
 impl Pushable for String {
     unsafe fn push(&self, state: *mut LuaState) {
-        let value = format!("{self}\0");
-        lua_pushstring(state, value.as_ptr() as _);
+        lua_pushlstring(state, self.as_ptr() as _, self.len());
     }
 }
 
 impl Pushable for &String {
     unsafe fn push(&self, state: *mut LuaState) {
-        let value = format!("{self}\0");
-        lua_pushstring(state, value.as_ptr() as _);
+        lua_pushlstring(state, self.as_ptr() as _, self.len());
     }
 }
 
 impl Pushable for &str {
     unsafe fn push(&self, state: *mut LuaState) {
-        let value = CString::new(*self).unwrap();
-        lua_pushstring(state, value.into_raw() as _);
+        lua_pushlstring(state, self.as_ptr() as _, self.len());
     }
 }
 
