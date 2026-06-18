@@ -8,6 +8,7 @@ use std::sync::OnceLock;
 use libloading::Library;
 use crate::luaL_Buffer;
 use crate::luaL_Reg;
+use core::ffi::VaList;
 
 // Mark for precompiled code (`<esc>Lua`)
 #[cfg(not(feature = "luajit"))]
@@ -267,12 +268,7 @@ generate! (LuaLib {
     pub unsafe extern "C-unwind" fn luaL_typerror(L: *mut lua_State, narg: c_int, tname: *const c_char) -> c_int;
     pub unsafe extern "C-unwind" fn luaL_argerror(L: *mut lua_State, narg: c_int, extramsg: *const c_char) -> c_int;
     pub unsafe extern "C-unwind" fn luaL_checklstring(L: *mut lua_State, narg: c_int, l: *mut usize) -> *const c_char;
-    pub unsafe extern "C-unwind" fn luaL_optlstring(
-        L: *mut lua_State,
-        narg: c_int,
-        def: *const c_char,
-        l: *mut usize
-    ) -> *const c_char;
+    pub unsafe extern "C-unwind" fn luaL_optlstring( L: *mut lua_State, narg: c_int, def: *const c_char, l: *mut usize) -> *const c_char;
     pub unsafe extern "C-unwind" fn luaL_checknumber(L: *mut lua_State, narg: c_int) -> lua_Number;
     pub unsafe extern "C-unwind" fn luaL_optnumber(L: *mut lua_State, narg: c_int, def: lua_Number) -> lua_Number;
     pub unsafe extern "C-unwind" fn luaL_checkinteger(L: *mut lua_State, narg: c_int) -> lua_Integer;
@@ -286,12 +282,7 @@ generate! (LuaLib {
 
     pub unsafe extern "C-unwind" fn luaL_where(L: *mut lua_State, lvl: c_int);
 
-    pub unsafe extern "C-unwind" fn luaL_checkoption(
-        L: *mut lua_State,
-        narg: c_int,
-        def: *const c_char,
-        lst: *const *const c_char
-    ) -> c_int;
+    pub unsafe extern "C-unwind" fn luaL_checkoption( L: *mut lua_State, narg: c_int, def: *const c_char, lst: *const *const c_char) -> c_int;
 
     pub unsafe extern "C-unwind" fn luaL_ref(L: *mut lua_State, t: c_int) -> c_int;
     pub unsafe extern "C-unwind" fn luaL_unref(L: *mut lua_State, t: c_int, r#ref: c_int);
@@ -302,19 +293,9 @@ generate! (LuaLib {
 
     pub unsafe extern "C-unwind" fn luaL_newstate() -> *mut lua_State;
 
-    pub unsafe extern "C-unwind" fn luaL_gsub(
-        L: *mut lua_State,
-        s: *const c_char,
-        p: *const c_char,
-        r: *const c_char
-    ) -> *const c_char;
+    pub unsafe extern "C-unwind" fn luaL_gsub( L: *mut lua_State, s: *const c_char, p: *const c_char, r: *const c_char) -> *const c_char;
 
-    pub unsafe extern "C-unwind" fn luaL_findtable(
-        L: *mut lua_State,
-        idx: c_int,
-        fname: *const c_char,
-        szhint: c_int
-    ) -> *const c_char;
+    pub unsafe extern "C-unwind" fn luaL_findtable( L: *mut lua_State, idx: c_int, fname: *const c_char, szhint: c_int) -> *const c_char;
     pub unsafe extern "C-unwind" fn luaL_buffinit(L: *mut lua_State, B: *mut luaL_Buffer);
     pub unsafe extern "C-unwind" fn luaL_prepbuffer(B: *mut luaL_Buffer) -> *mut c_char;
     pub unsafe extern "C-unwind" fn luaL_addlstring(B: *mut luaL_Buffer, s: *const c_char, l: usize);
@@ -345,9 +326,8 @@ generate! (LuaLib {
     // open all builtin libraries
     pub unsafe extern "C-unwind" fn luaL_openlibs(L: *mut lua_State);
 
-}
-raw {
-    pub lua_pushvfstring: unsafe extern "C-unwind" fn(L: *mut lua_State, fmt: *const c_char, args: core::ffi::VaList) -> *const c_char,
+} raw {
+    pub lua_pushvfstring: unsafe extern "C-unwind" fn(L: *mut lua_State, fmt: *const c_char, args: VaList) -> *const c_char,
 });
 pub unsafe extern "C-unwind" fn lua_pushfstring(L: *mut lua_State, fmt: *const c_char, mut args: ...) -> *const c_char {
     let lua = LUA.get().unwrap_or_else(|| panic!("Failed to access Lua lib defs"));
