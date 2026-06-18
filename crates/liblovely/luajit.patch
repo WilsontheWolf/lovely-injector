@@ -12,7 +12,7 @@ index a44f0272..f2541a5b 100644
  				   const char *name, const char *mode);
  LUALIB_API void luaL_traceback (lua_State *L, lua_State *L1, const char *msg,
 diff --git a/src/lib_aux.c b/src/lib_aux.c
-index 4b4664a7..f9afae3b 100644
+index 4b4664a7..a04fb059 100644
 --- a/src/lib_aux.c
 +++ b/src/lib_aux.c
 @@ -23,6 +23,20 @@
@@ -36,21 +36,19 @@ index 4b4664a7..f9afae3b 100644
  #if LJ_TARGET_POSIX
  #include <sys/wait.h>
  #endif
-@@ -351,6 +365,9 @@ static void *mem_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
+@@ -351,6 +365,8 @@ static void *mem_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
  
  LUALIB_API lua_State *luaL_newstate(void)
  {
-+  printf("test");
 +  struct LuaLib lua = {lua_newstate, lua_close, lua_newthread, lua_atpanic, lua_gettop, lua_settop, lua_pushvalue, lua_remove, lua_insert, lua_replace, lua_checkstack, lua_xmove, lua_isnumber, lua_isstring, lua_iscfunction, lua_isuserdata, lua_type, lua_typename, lua_equal, lua_rawequal, lua_lessthan, lua_tonumber, lua_tointeger, lua_toboolean, lua_tolstring, lua_objlen, lua_tocfunction, lua_touserdata, lua_tothread, lua_topointer, lua_pushnil, lua_pushnumber, lua_pushinteger, lua_pushlstring, lua_pushstring, lua_pushcclosure, lua_pushboolean, lua_pushlightuserdata, lua_pushthread, lua_gettable, lua_getfield, lua_rawget, lua_rawgeti, lua_createtable, lua_newuserdata, lua_getmetatable, lua_getfenv, lua_settable, lua_setfield, lua_rawset, lua_rawseti, lua_setmetatable, lua_setfenv, lua_call, lua_pcall, lua_cpcall, lua_load, lua_dump, lua_yield, lua_resume, lua_status, lua_getstack, lua_getinfo, lua_getlocal, lua_setlocal, lua_getupvalue, lua_setupvalue, lua_sethook, lua_gethook, lua_gethookmask, lua_gethookcount, lua_gc, lua_error, lua_next, lua_concat, lua_getallocf, lua_setallocf, luaL_register, luaL_getmetafield, luaL_callmeta, luaL_typerror, luaL_argerror, luaL_checklstring, luaL_optlstring, luaL_checknumber, luaL_optnumber, luaL_checkinteger, luaL_optinteger, luaL_checkstack, luaL_checktype, luaL_checkany, luaL_newmetatable, luaL_checkudata, luaL_where, luaL_checkoption, luaL_ref, luaL_unref, luaL_loadfile, luaL_loadbuffer, luaL_loadstring, luaL_newstate, luaL_gsub, luaL_findtable, luaL_buffinit, luaL_prepbuffer, luaL_addlstring, luaL_addstring, luaL_addvalue, luaL_pushresult, luaopen_base, luaopen_table, luaopen_io, luaopen_os, luaopen_string, luaopen_math, luaopen_debug, luaopen_package, luaopen_bit, luaopen_jit, luaopen_ffi, luaL_openlibs, lua_pushvfstring};
 +  lovely_init(lovely_loadbufferx, lua);
    lua_State *L = lua_newstate(mem_alloc, NULL);
    if (L) {
      G(L)->panic = panic;
-@@ -369,6 +386,9 @@ LUALIB_API lua_State *luaL_newstate(void)
+@@ -369,6 +385,8 @@ LUALIB_API lua_State *luaL_newstate(void)
  
  LUALIB_API lua_State *luaL_newstate(void)
  {
-+  printf("test");
 +  struct LuaLib lua = {lua_newstate, lua_close, lua_newthread, lua_atpanic, lua_gettop, lua_settop, lua_pushvalue, lua_remove, lua_insert, lua_replace, lua_checkstack, lua_xmove, lua_isnumber, lua_isstring, lua_iscfunction, lua_isuserdata, lua_type, lua_typename, lua_equal, lua_rawequal, lua_lessthan, lua_tonumber, lua_tointeger, lua_toboolean, lua_tolstring, lua_objlen, lua_tocfunction, lua_touserdata, lua_tothread, lua_topointer, lua_pushnil, lua_pushnumber, lua_pushinteger, lua_pushlstring, lua_pushstring, lua_pushcclosure, lua_pushboolean, lua_pushlightuserdata, lua_pushthread, lua_gettable, lua_getfield, lua_rawget, lua_rawgeti, lua_createtable, lua_newuserdata, lua_getmetatable, lua_getfenv, lua_settable, lua_setfield, lua_rawset, lua_rawseti, lua_setmetatable, lua_setfenv, lua_call, lua_pcall, lua_cpcall, lua_load, lua_dump, lua_yield, lua_resume, lua_status, lua_getstack, lua_getinfo, lua_getlocal, lua_setlocal, lua_getupvalue, lua_setupvalue, lua_sethook, lua_gethook, lua_gethookmask, lua_gethookcount, lua_gc, lua_error, lua_next, lua_concat, lua_getallocf, lua_setallocf, luaL_register, luaL_getmetafield, luaL_callmeta, luaL_typerror, luaL_argerror, luaL_checklstring, luaL_optlstring, luaL_checknumber, luaL_optnumber, luaL_checkinteger, luaL_optinteger, luaL_checkstack, luaL_checktype, luaL_checkany, luaL_newmetatable, luaL_checkudata, luaL_where, luaL_checkoption, luaL_ref, luaL_unref, luaL_loadfile, luaL_loadbuffer, luaL_loadstring, luaL_newstate, luaL_gsub, luaL_findtable, luaL_buffinit, luaL_prepbuffer, luaL_addlstring, luaL_addstring, luaL_addvalue, luaL_pushresult, luaopen_base, luaopen_table, luaopen_io, luaopen_os, luaopen_string, luaopen_math, luaopen_debug, luaopen_package, luaopen_bit, luaopen_jit, luaopen_ffi, luaL_openlibs, lua_pushvfstring};
 +  lovely_init(lovely_loadbufferx, lua);
    lua_State *L;
