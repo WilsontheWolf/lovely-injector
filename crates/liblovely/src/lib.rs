@@ -1,4 +1,3 @@
-use lovely_core::log::*;
 use lovely_core::sys::{LuaLib, LuaState};
 use std::panic;
 
@@ -17,11 +16,6 @@ unsafe extern "C" fn lovely_init(
     loadbufferx: LoadBufferX, lua: LuaLib,
 ) {
     if RUNTIME.get().is_none() {
-        panic::set_hook(Box::new(|x| {
-            let message = format!("lovely-injector has crashed: \n{x}");
-            error!("{message}");
-        }));
-
         RECALL.set(loadbufferx).expect("Shit's erroring");
 
         let rt = Lovely::init(

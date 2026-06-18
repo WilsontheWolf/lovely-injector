@@ -42,11 +42,11 @@ fn reload_patches(_lua: &Lua, _: ()) -> Result<bool> {
     let binding = Arc::clone(&lovely.patch_table);
     let mut patch_table = binding.write().unwrap();
     *patch_table = new_table;
+
     Ok(true)
 }
 
 fn get_var(_lua: &Lua, key: String) -> Option<String> {
-    info!("{:?}", _lua.traceback(None, 0));
     let lovely = &RUNTIME.get().unwrap();
     let vars = lovely.lua_vars.read().unwrap();
     let val = vars.get(&key);
