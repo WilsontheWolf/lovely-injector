@@ -16,7 +16,8 @@ use getargs::{Arg, Options};
 use itertools::Itertools;
 use patch::{ModulePatch, Patch};
 use regex_lite::Regex;
-use mlua::Lua;
+use mlua::{Lua, MultiValue, IntoLuaMulti, LuaSerdeExt};
+// use mlua::LuaSerdeExt;
 
 use sys::{LuaFunc, LuaLib, LuaState, LuaStateTrait, LUA};
 
@@ -329,7 +330,7 @@ impl Lovely {
 // Import PatchTable from the new location
 use crate::patch::table::PatchTable;
 
-fn apply_patches(lua: &Lua, (name, buf): (String, String)) -> Result<String> {
+fn apply_patches(lua: &Lua, (name, buf): (String, String)) -> Result<MultiValue> {
     let binding = RUNTIME.get().unwrap().patch_table.read().unwrap();
     if binding.needs_patching(&name) {
         let res = unsafe {
@@ -339,10 +340,10 @@ fn apply_patches(lua: &Lua, (name, buf): (String, String)) -> Result<String> {
             })
         };
 
-        let (patched, _debug) = res?;
-        return Ok(patched);
+        let (patched, debug) = res?;
+        return Ok((patched, lua.to_value(&debug)).into_lua_multi(lua)?);
     } else {
-        return Ok(buf);
+        return Ok(buf.into_lua_multi(lua)?);// HACK: Fix me later
     }
 }
 

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::dump::{ByteDebugEntry, PatchDebug};
 use crate::patch::{loader, vars};
 use crate::patch::{Patch, Priority};
-use crate::sys::{preload_module, LuaState, no_err};
+use crate::sys::{preload_module, LuaState, no_err, multi_value_result};
 use mlua::Lua;
 use crop::Rope;
 use itertools::Itertools;
@@ -69,7 +69,7 @@ impl PatchTable {
         table.set("version", env!("CARGO_PKG_VERSION")).unwrap();
         table.set("mod_dir", mod_dir).unwrap();
         table.set("reload_patches", lua.create_function(no_err(reload_patches)).unwrap()).unwrap();
-        table.set("apply_patches", lua.create_function(no_err(apply_patches)).unwrap()).unwrap();
+        table.set("apply_patches", lua.create_function(no_err(multi_value_result(apply_patches))).unwrap()).unwrap();
         table.set("set_var", lua.create_function(no_err(set_var)).unwrap()).unwrap();
         table.set("get_var", lua.create_function(no_err(get_var)).unwrap()).unwrap();
         table.set("remove_var", lua.create_function(no_err(remove_var)).unwrap()).unwrap();

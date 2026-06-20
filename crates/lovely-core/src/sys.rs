@@ -243,3 +243,17 @@ F: Fn(&Lua, A) -> R + mlua::MaybeSend + 'static,
 {
     move |lua, args| Ok(func(lua, args))
 }
+use mlua::{IntoLuaMulti};
+pub fn multi_value_result<F, A, R, E>(func: F) -> impl Fn(&Lua, A) -> mlua::MultiValue
+where
+F: Fn(&Lua, A) -> std::result::Result<R, E>,
+    A: mlua::FromLuaMulti,
+    R: mlua::IntoLuaMulti,
+    E: mlua::IntoLua,
+{
+    move |lua, args|
+        match func(lua, args) {
+            Ok(val) => val.into_lua_multi(lua).unwrap(),
+            Err(err) => (mlua::Value::Nil, err).into_lua_multi(lua).unwrap(),
+        }
+}
