@@ -17,7 +17,6 @@ use itertools::Itertools;
 use patch::{ModulePatch, Patch};
 use regex_lite::Regex;
 use mlua::{Lua, MultiValue, IntoLuaMulti, LuaSerdeExt};
-// use mlua::LuaSerdeExt;
 
 use sys::{LuaFunc, LuaLib, LuaState, LuaStateTrait, LUA};
 
@@ -343,7 +342,7 @@ fn apply_patches(lua: &Lua, (name, buf): (String, String)) -> Result<MultiValue>
         let (patched, debug) = res?;
         return Ok((patched, lua.to_value(&debug)).into_lua_multi(lua)?);
     } else {
-        return Ok(buf.into_lua_multi(lua)?);// HACK: Fix me later
+        return Ok(buf.into_lua_multi(lua)?);
     }
 }
 
