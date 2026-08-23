@@ -1,6 +1,6 @@
 /target
 **.DS_STORE
 .vscode
-version.dll
+*.dll
 # nix output path
 result
