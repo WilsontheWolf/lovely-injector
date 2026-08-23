@@ -186,6 +186,14 @@ impl Lovely {
                     This problem MUST BE FIXED before you can start the game.\n\nTO FIX: Delete the file at {dwmapi:?}"
                 );
             }
+            let version = game_dir.join("version.dll");
+
+            if version.is_file() {
+                panic!(
+                    "An old Lovely installation was detected within the game directory. \
+                    This problem MUST BE FIXED before you can start the game.\n\nTO FIX: Delete the file at {version:?}"
+                );
+            }
         }
 
         info!("Game directory is at {game_dir:?}");
