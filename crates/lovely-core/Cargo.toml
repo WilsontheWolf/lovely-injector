@@ -17,12 +17,12 @@ wildmatch = "2.3.0"
 log = "0.4.21"
 regex-cursor = "0.1.4"
 regex-lite = "0.1.5"
-chrono = "0.4.38"
 serde_ignored = "0.1.10"
 itertools = "0.13.0"
 crop = "0.4.2"
 anyhow = "1.0.100"
 zip = "6.0.0"
+jiff = "0.2.35"
 
 [dev-dependencies]
 criterion = { version = "0.7", default-features = false }
