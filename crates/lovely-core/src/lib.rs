@@ -18,7 +18,7 @@ use patch::{ModulePatch, Patch};
 use regex_lite::Regex;
 use mlua::Lua;
 
-use sys::{LuaFunc, LuaLib, LuaState, LuaStateTrait, LUA};
+use sys::{lua_CFunction, LuaLib, lua_State, LuaStateTrait, LUA};
 
 use crate::patch::Target;
 use crate::dump::write_dump;
@@ -34,7 +34,8 @@ pub const LOVELY_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub static RUNTIME: OnceLock<Lovely> = OnceLock::new();
 
 type LoadBuffer =
-    dyn Fn(*mut LuaState, *const u8, usize, *const u8, *const u8) -> u32 + Send + Sync + 'static;
+    dyn Fn(*mut lua_State, *const u8, usize, *const u8, *const u8) -> i32 + Send + Sync + 'static;
+
 
 fn reload_patches(_lua: &Lua, _: ()) -> Result<bool> {
     let lovely = &RUNTIME.get().unwrap();
@@ -213,17 +214,17 @@ impl Lovely {
     }
     pub unsafe fn apply_buffer_patches(
         &self,
-        state: *mut LuaState,
+        state: *mut lua_State,
         buf_ptr: *const u8,
         size: usize,
         name_ptr: *const u8,
         mode_ptr: *const u8,
-    ) -> u32 {
+    ) -> i32 {
        let res = self.apply_buffer_patches_internal(state, buf_ptr, size, name_ptr);
        if res.is_err() {
            state.push(format!("{:?}", res.unwrap_err()));
            // NOTE: Not really the most correct error code but it doesn't handle the correcter errors right.
-           return 3; // LUA_ERRSYNTAX
+           return sys::LUA_ERRSYNTAX;
        }
 
        let res = res.unwrap();
@@ -247,7 +248,7 @@ impl Lovely {
     /// Err() if an error occurred
     pub unsafe fn apply_buffer_patches_internal(
         &self,
-        state: *mut LuaState,
+        state: *mut lua_State,
         buf_ptr: *const u8,
         size: usize,
         name_ptr: *const u8,
@@ -257,12 +258,12 @@ impl Lovely {
         let patch_table = binding.read().unwrap();
         {
             if !sys::is_module_preloaded(state, "lovely") {
-                let closure: LuaFunc = sys::override_print;
+                let closure: lua_CFunction = sys::override_print;
                 state.push(closure);
                 sys::lua_setfield(state, sys::LUA_GLOBALSINDEX, c"print".as_ptr());
 
                 // Inject Lovely functions into the runtime.
-                patch_table.inject_metadata(state);
+                patch_table.inject_metadata(state)?;
 
                 // Inject mod modules into runtime
                 let module_patches: Vec<_> = patch_table
@@ -272,7 +273,7 @@ impl Lovely {
                         Patch::Module(patch) => Some((patch, prio, path)),
                         _ => None,
                     })
-                .filter(|(x, _, _)| !x.load_now)
+                    .filter(|(x, _, _)| !x.load_now)
                     .sorted_by_key(|(_, &prio, _)| prio)
                     .map(|(x, _, path)| (x, path))
                     .collect();

@@ -4,7 +4,7 @@ use std::{
     ptr,
 };
 
-use crate::sys::{self, lua_identity_closure, lua_err_identity_closure, LuaState, LuaStateTrait};
+use crate::sys::{self, lua_identity_closure, lua_err_identity_closure, lua_State, LuaStateTrait};
 use crate::RUNTIME;
 use serde::{Deserialize, Serialize};
 use anyhow::bail;
@@ -41,7 +41,7 @@ impl ModulePatch {
     pub unsafe fn apply(
         &self,
         file_name: &str,
-        state: *mut LuaState,
+        state: *mut lua_State,
         path: &Path,
     ) -> anyhow::Result<bool> {
         // Stop if we're not at the correct insertion point.

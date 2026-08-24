@@ -8,15 +8,8 @@ use itertools::Itertools;
 pub use mlua_sys::*;
 use log::info;
 
-pub type LuaState = lua_State; // TODO: Remove this shim
-pub type LuaFunc = lua_CFunction;
-
-pub const LUA_GLOBALSINDEX: c_int = -10002;
-pub const LUA_TNIL: c_int = 0;
-pub const LUA_TBOOLEAN: c_int = 1;
-
 // TODO: Can we make this work with variable number of upvalues?
-unsafe extern "C-unwind" fn lua_return_values(state: *mut LuaState) -> c_int {
+unsafe extern "C-unwind" fn lua_return_values(state: *mut lua_State) -> c_int {
     let index = lua_upvalueindex(1);
     lua_pushvalue(state, index);
     1
@@ -25,16 +18,16 @@ unsafe extern "C-unwind" fn lua_return_values(state: *mut LuaState) -> c_int {
 // TODO: implement all lua methods on this(?)
 pub(crate) trait LuaStateTrait {
     unsafe fn push<P: Pushable>(self, obj: P);
-    unsafe fn push_closure(self, func: LuaFunc, vals: c_int);
+    unsafe fn push_closure(self, func: lua_CFunction, vals: c_int);
     unsafe fn to_string(self, index: c_int) -> String;
 }
 
-impl LuaStateTrait for *mut LuaState {
+impl LuaStateTrait for *mut lua_State {
     unsafe fn push<P: Pushable>(self, obj: P) {
         obj.push(self)
     }
 
-    unsafe fn push_closure(self, func: LuaFunc, vals: c_int) {
+    unsafe fn push_closure(self, func: lua_CFunction, vals: c_int) {
         lua_pushcclosure(self, func, vals);
     }
 
@@ -52,41 +45,41 @@ pub trait Pushable {
     ///
     /// # Safety
     /// Directly interacts with native Lua state.
-    unsafe fn push(&self, state: *mut LuaState);
+    unsafe fn push(&self, state: *mut lua_State);
 }
 
 impl Pushable for String {
-    unsafe fn push(&self, state: *mut LuaState) {
+    unsafe fn push(&self, state: *mut lua_State) {
         lua_pushlstring(state, self.as_ptr() as _, self.len());
     }
 }
 
 impl Pushable for &String {
-    unsafe fn push(&self, state: *mut LuaState) {
+    unsafe fn push(&self, state: *mut lua_State) {
         lua_pushlstring(state, self.as_ptr() as _, self.len());
     }
 }
 
 impl Pushable for &str {
-    unsafe fn push(&self, state: *mut LuaState) {
+    unsafe fn push(&self, state: *mut lua_State) {
         lua_pushlstring(state, self.as_ptr() as _, self.len());
     }
 }
 
 impl Pushable for isize {
-    unsafe fn push(&self, state: *mut LuaState) {
+    unsafe fn push(&self, state: *mut lua_State) {
         lua_pushnumber(state, *self as _);
     }
 }
 
 impl Pushable for bool {
-    unsafe fn push(&self, state: *mut LuaState) {
+    unsafe fn push(&self, state: *mut lua_State) {
         lua_pushboolean(state, *self as _);
     }
 }
 
-impl Pushable for LuaFunc {
-    unsafe fn push(&self, state: *mut LuaState) {
+impl Pushable for lua_CFunction {
+    unsafe fn push(&self, state: *mut lua_State) {
         lua_pushcclosure(state, *self as _, 0);
     }
 }
@@ -95,7 +88,7 @@ impl Pushable for LuaFunc {
 ///
 /// # Safety
 /// Directly interacts and mutates native Lua state.
-pub unsafe fn preload_module(state: *mut LuaState, name: &'static str, value: impl mlua::IntoLua) {
+pub unsafe fn preload_module(state: *mut lua_State, name: &'static str, value: impl mlua::IntoLua) {
     let top = lua_gettop(state);
 
     // Get the package.preloads
@@ -115,7 +108,7 @@ pub unsafe fn preload_module(state: *mut LuaState, name: &'static str, value: im
 
 
     // Push our function to the stack
-    let func: LuaFunc = lua_return_values;
+    let func: lua_CFunction = lua_return_values;
 
     state.push_closure(func, 1);
 
@@ -129,8 +122,8 @@ pub unsafe fn preload_module(state: *mut LuaState, name: &'static str, value: im
 /// Load the provided buffer as a lua module with the specified name.
 /// # Safety
 /// Makes a lot of FFI calls, mutates internal C lua state.
-pub unsafe fn load_module<F: Fn(*mut LuaState, *const u8, usize, *const u8, *const u8) -> u32>(
-    state: *mut LuaState,
+pub unsafe fn load_module<F: Fn(*mut lua_State, *const u8, usize, *const u8, *const u8) -> u32>(
+    state: *mut lua_State,
     name: &str,
     buffer: &str,
     lual_loadbufferx: &F,
@@ -170,7 +163,7 @@ pub unsafe fn load_module<F: Fn(*mut LuaState, *const u8, usize, *const u8, *con
 // Checks if a module is in the preload table. Used to check if lovely was already initalized
 // # Safety
 // Uses the native lua API. I'm also pretty sure I it bikes without a helmet.
-pub(crate) unsafe fn is_module_preloaded(state: *mut LuaState, name: &str) -> bool {
+pub(crate) unsafe fn is_module_preloaded(state: *mut lua_State, name: &str) -> bool {
     let name_cstr = CString::new(name).unwrap();
     let stack_top = lua_gettop(state);
     lua_getfield(state, LUA_GLOBALSINDEX, c"package".as_ptr());
@@ -186,7 +179,7 @@ pub(crate) unsafe fn is_module_preloaded(state: *mut LuaState, name: &str) -> bo
 /// An override print function, copied piecemeal from the Lua 5.1 source, but in Rust.
 /// # Safety
 /// Native lua API access. It's unsafe, it's unchecked, it will probably eat your firstborn.
-pub unsafe extern "C-unwind" fn override_print(state: *mut LuaState) -> c_int {
+pub unsafe extern "C-unwind" fn override_print(state: *mut lua_State) -> c_int {
     let argc = lua_gettop(state);
     let mut out = VecDeque::new();
 
@@ -218,7 +211,7 @@ pub unsafe extern "C-unwind" fn override_print(state: *mut LuaState) -> c_int {
 /// be used to wrap lua values into a closure which returns that value.
 /// # Safety
 /// Makes some FFI calls, mutates internal C lua state.
-pub unsafe extern "C-unwind" fn lua_identity_closure(state: *mut LuaState) -> c_int {
+pub unsafe extern "C-unwind" fn lua_identity_closure(state: *mut lua_State) -> c_int {
     // LUA_GLOBALSINDEX - 1 is where the first upvalue is located
     lua_pushvalue(state, LUA_GLOBALSINDEX - 1);
     // We just return that value
@@ -229,12 +222,16 @@ pub unsafe extern "C-unwind" fn lua_identity_closure(state: *mut LuaState) -> c_
 /// be used to wrap lua values into a closure which throws that value.
 /// # Safety
 /// Makes some FFI calls, mutates internal C lua state.
-pub unsafe extern "C-unwind" fn lua_err_identity_closure(state: *mut LuaState) -> c_int {
+pub unsafe extern "C-unwind" fn lua_err_identity_closure(state: *mut lua_State) -> c_int {
     // LUA_GLOBALSINDEX - 1 is where the first upvalue is located
     lua_pushvalue(state, LUA_GLOBALSINDEX - 1);
     lua_error(state)
 }
 
+// Used to wrap the function passed to mlua's lua.create_function
+// Removes the result (which mlua uses to cause an error) which allows
+// a function to return a Result (which is translated to lua's 
+// Ok(v) = v, Err(v) = false, v) allowing us to use the ? operator
 pub fn no_err<F, A, R>(func: F) -> impl Fn(&Lua, A) -> mlua::Result<R> + mlua::MaybeSend + 'static
 where
 F: Fn(&Lua, A) -> R + mlua::MaybeSend + 'static,

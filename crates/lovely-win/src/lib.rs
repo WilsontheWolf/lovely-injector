@@ -7,7 +7,7 @@ use std::sync::{LazyLock, OnceLock};
 use anyhow::Context;
 use itertools::Itertools;
 use lovely_core::log::*;
-use lovely_core::sys::LuaState;
+use lovely_core::sys::lua_State;
 use lovely_core::Lovely;
 use lovely_core::LOVELY_VERSION;
 
@@ -22,20 +22,20 @@ use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MESSAGEBOX_STYLE};
 static RUNTIME: OnceLock<&Lovely> = OnceLock::new();
 
 static_detour! {
-    pub static LuaLoadbufferx_Detour: unsafe extern "C" fn(*mut LuaState, *const u8, usize, *const u8,*const u8) -> u32;
-    pub static LuaLoadbuffer_Detour: unsafe extern "C" fn(*mut LuaState, *const u8, usize, *const u8) -> u32;
+    pub static LuaLoadbufferx_Detour: unsafe extern "C" fn(*mut lua_State, *const u8, usize, *const u8,*const u8) -> i32;
+    pub static LuaLoadbuffer_Detour: unsafe extern "C" fn(*mut lua_State, *const u8, usize, *const u8) -> i32;
 }
 
 static WIN_TITLE: LazyLock<U16CString> =
-LazyLock::new(|| U16CString::from_str(format!("Lovely {LOVELY_VERSION}")).unwrap());
+    LazyLock::new(|| U16CString::from_str(format!("Lovely {LOVELY_VERSION}")).unwrap());
 
 unsafe extern "C" fn lua_loadbufferx_detour(
-    state: *mut LuaState,
+    state: *mut lua_State,
     buf_ptr: *const u8,
     size: usize,
     name_ptr: *const u8,
     mode_ptr: *const u8,
-) -> u32 {
+) -> i32 {
     let rt = RUNTIME.get().unwrap_unchecked();
     rt.apply_buffer_patches(state, buf_ptr, size, name_ptr, mode_ptr)
 }
@@ -49,12 +49,13 @@ unsafe extern "system" fn DllMain(_: HINSTANCE, reason: u32, _: *const c_void) -
 
 
     let result = panic::catch_unwind(|| {
+        panic!("test");
         let args = env::args().collect_vec();
 
         if args.contains(&"--vanilla".to_string())
             || args.contains(&"-v".to_string())
-                || args.contains(&"--disable-mods".to_string())
-                || args.contains(&"-d".to_string())
+            || args.contains(&"--disable-mods".to_string())
+            || args.contains(&"-d".to_string())
         {
             return 1;
         }
@@ -86,7 +87,7 @@ unsafe extern "system" fn DllMain(_: HINSTANCE, reason: u32, _: *const c_void) -
         let proc = GetProcAddress(handle, s!("luaL_loadbufferx")).unwrap();
         let fn_target = std::mem::transmute::<
             unsafe extern "system" fn() -> isize, 
-                unsafe extern "C" fn(*mut LuaState, *const u8, usize, *const u8, *const u8) -> u32
+                unsafe extern "C" fn(*mut lua_State, *const u8, usize, *const u8, *const u8) -> i32
                     >(proc);
 
         LuaLoadbufferx_Detour
@@ -100,7 +101,7 @@ unsafe extern "system" fn DllMain(_: HINSTANCE, reason: u32, _: *const c_void) -
         let proc = GetProcAddress(handle, s!("luaL_loadbuffer")).unwrap();
         let fn_target = std::mem::transmute::<
             unsafe extern "system" fn() -> isize, 
-                unsafe extern "C" fn(*mut LuaState, *const u8, usize, *const u8) -> u32
+                unsafe extern "C" fn(*mut lua_State, *const u8, usize, *const u8) -> i32
                     >(proc);
 
         LuaLoadbuffer_Detour

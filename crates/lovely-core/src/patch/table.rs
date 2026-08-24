@@ -1,11 +1,12 @@
-use anyhow::{Result, Context};
+use anyhow::{Result, Context, anyhow};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::dump::{ByteDebugEntry, PatchDebug};
 use crate::patch::{loader, vars};
 use crate::patch::{Patch, Priority};
-use crate::sys::{preload_module, LuaState, no_err};
+use crate::sys::{preload_module, lua_State, no_err};
+use crate::{apply_patches, get_log_path, get_var, reload_patches, remove_var, set_var};
 use mlua::Lua;
 use crop::Rope;
 use itertools::Itertools;
@@ -55,31 +56,29 @@ impl PatchTable {
     /// Inject lovely metadata into the game.
     /// # Safety
     /// Unsafe due to internal unchecked usages of raw lua state.
-    pub unsafe fn inject_metadata(&self, state: *mut LuaState) {
-        let mod_dir = self.mod_dir.to_str().unwrap().replace('\\', "/");
+    pub unsafe fn inject_metadata(&self, state: *mut lua_State) -> Result<()> {
+        let mod_dir = self.mod_dir.to_str().ok_or(anyhow!("Could not convert mod dir to a string?"))?.replace('\\', "/");
         let repo = "https://github.com/ethangreen-dev/lovely-injector";
-
-        // Import the functions needed for injection
-        use crate::{apply_patches, get_log_path, get_var, reload_patches, remove_var, set_var};
 
         let lua = Lua::get_or_init_from_ptr(state);
 
-        let table = lua.create_table().unwrap();
-        table.set("repo", repo).unwrap();
-        table.set("version", env!("CARGO_PKG_VERSION")).unwrap();
-        table.set("mod_dir", mod_dir).unwrap();
-        table.set("reload_patches", lua.create_function(no_err(reload_patches)).unwrap()).unwrap();
-        table.set("apply_patches", lua.create_function(no_err(apply_patches)).unwrap()).unwrap();
-        table.set("set_var", lua.create_function(no_err(set_var)).unwrap()).unwrap();
-        table.set("get_var", lua.create_function(no_err(get_var)).unwrap()).unwrap();
-        table.set("remove_var", lua.create_function(no_err(remove_var)).unwrap()).unwrap();
-        table.set("log_path", get_log_path().unwrap()).unwrap();
+        let table = lua.create_table()?;
+        table.set("repo", repo)?;
+        table.set("version", env!("CARGO_PKG_VERSION"))?;
+        table.set("mod_dir", mod_dir)?;
+        table.set("reload_patches", lua.create_function(no_err(reload_patches))?)?;
+        table.set("apply_patches", lua.create_function(no_err(apply_patches))?)?;
+        table.set("set_var", lua.create_function(no_err(set_var))?)?;
+        table.set("get_var", lua.create_function(no_err(get_var))?)?;
+        table.set("remove_var", lua.create_function(no_err(remove_var))?)?;
+        table.set("log_path", get_log_path().ok_or(anyhow!("Log path is not real set?!"))?)?;
 
         preload_module(
             state,
             "lovely",
             table
         );
+        Ok(())
     }
 
     /// Apply one or more patches onto the target's buffer.
@@ -90,8 +89,8 @@ impl PatchTable {
         &self,
         target: &str,
         buffer: &str,
-        lua_state: *mut LuaState,
-    ) -> anyhow::Result<(String, PatchDebug)> { // Buffer Content, Debug info, Error message
+        lua_state: *mut lua_State,
+    ) -> Result<(String, PatchDebug)> {
         let target = target.strip_prefix('@').unwrap_or(target);
 
         let module_patches = self
@@ -101,7 +100,7 @@ impl PatchTable {
                 Patch::Module(patch) => Some((patch, prio, path)),
                 _ => None,
             })
-        .filter(|(x, _, _)| x.load_now)
+            .filter(|(x, _, _)| x.load_now)
             .sorted_by_key(|(_, &prio, _)| prio)
             .map(|(x, _, path)| (x, path));
 
@@ -112,7 +111,7 @@ impl PatchTable {
                 Patch::Copy(patch) => Some((patch, prio, path)),
                 _ => None,
             })
-        .sorted_by_key(|(_, &prio, _)| prio)
+            .sorted_by_key(|(_, &prio, _)| prio)
             .map(|(x, _, path)| (x, path));
 
         let pattern_and_regex = self
