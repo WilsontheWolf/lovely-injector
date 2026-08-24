@@ -2,8 +2,7 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
 use std::sync::{OnceLock, RwLock};
-
-use chrono::Local;
+use jiff::Zoned;
 
 // Exports for convenience.
 pub use log::{debug, error, info, trace, warn, LevelFilter};
@@ -51,8 +50,9 @@ pub fn init(log_dir: &Path) -> Result<(), SetLoggerError> {
         fs::create_dir_all(log_dir).unwrap();
     }
 
-    let now = Local::now();
-    let timestamp = now.format("%Y.%m.%d-%H.%M.%S");
+    let now = Zoned::now();
+    let timestamp = now.strftime("%Y.%m.%d-%H.%M.%S");
+
 
     let log_name = format!("lovely-{timestamp}.log");
     let log_path = log_dir.join(log_name);
