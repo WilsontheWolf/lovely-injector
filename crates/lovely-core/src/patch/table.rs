@@ -62,9 +62,9 @@ impl PatchTable {
         use crate::{apply_patches, get_log_path, getvar, reload_patches, removevar, setvar};
 
         preload_module(
-            state,
-            "lovely",
-            LuaTable::new()
+                state,
+                "lovely",
+                LuaTable::new()
                 .add_var("repo", repo)
                 .add_var("version", env!("CARGO_PKG_VERSION"))
                 .add_var("mod_dir", mod_dir)
@@ -74,7 +74,7 @@ impl PatchTable {
                 .add_var("get_var", getvar as LuaFunc)
                 .add_var("remove_var", removevar as LuaFunc)
                 .add_var("log_path", get_log_path().unwrap()),
-        );
+                );
     }
 
     /// Apply one or more patches onto the target's buffer.
@@ -82,21 +82,21 @@ impl PatchTable {
     /// # Safety
     /// Unsafe due to internal unchecked usages of raw lua state.
     pub unsafe fn apply_patches(
-        &self,
-        target: &str,
-        buffer: &str,
-        lua_state: *mut LuaState,
-    ) -> Result<(String, PatchDebug), String> { // Buffer Content, Debug info, Error message
+            &self,
+            target: &str,
+            buffer: &str,
+            lua_state: *mut LuaState,
+            ) -> Result<(String, PatchDebug), String> { // Buffer Content, Debug info, Error message
         let target = target.strip_prefix('@').unwrap_or(target);
 
         let module_patches = self
             .patches
             .iter()
             .filter_map(|(x, prio, path)| match x {
-                Patch::Module(patch) => Some((patch, prio, path)),
-                _ => None,
-            })
-            .filter(|(x, _, _)| x.load_now)
+                    Patch::Module(patch) => Some((patch, prio, path)),
+                    _ => None,
+                    })
+        .filter(|(x, _, _)| x.load_now)
             .sorted_by_key(|(_, &prio, _)| prio)
             .map(|(x, _, path)| (x, path));
 
@@ -104,10 +104,10 @@ impl PatchTable {
             .patches
             .iter()
             .filter_map(|(x, prio, path)| match x {
-                Patch::Copy(patch) => Some((patch, prio, path)),
-                _ => None,
-            })
-            .sorted_by_key(|(_, &prio, _)| prio)
+                    Patch::Copy(patch) => Some((patch, prio, path)),
+                    _ => None,
+                    })
+        .sorted_by_key(|(_, &prio, _)| prio)
             .map(|(x, _, path)| (x, path));
 
         let pattern_and_regex = self
@@ -115,10 +115,10 @@ impl PatchTable {
             .iter()
             .filter(|(patch, _, _)| matches!(patch, Patch::Pattern(..)))
             .chain(
-                self.patches
+                    self.patches
                     .iter()
                     .filter(|(patch, _, _)| matches!(patch, Patch::Regex(..))),
-            )
+                  )
             .sorted_by_key(|(_, prio, _)| prio)
             .map(|(patch, _, path)| (patch, path))
             .collect_vec();
@@ -158,8 +158,8 @@ impl PatchTable {
         for (patch, path) in pattern_and_regex {
             let result = match patch {
                 Patch::Pattern(x) => x.apply(target, &mut rope, path),
-                Patch::Regex(x) => x.apply(target, &mut rope, path),
-                _ => unreachable!(),
+                    Patch::Regex(x) => x.apply(target, &mut rope, path),
+                    _ => unreachable!(),
             };
 
             if let Some(entry) = result {

@@ -4,13 +4,37 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::hash::{DefaultHasher, Hash, Hasher};
 
-use crate::patch::{Patch, PatchFile, Priority};
+use crate::patch::{Patch, PatchFile, Priority, ModMetadata};
 use itertools::Itertools;
 use log::*;
 use walkdir::WalkDir;
 use zip::ZipArchive;
+use jiff::Timestamp;
+use std::sync::LazyLock;
 
+static seed: LazyLock<Timestamp> = LazyLock::new(|| Timestamp::now());
+
+#[derive(Debug, Clone)]
+enum ModType {
+    Dir,
+    Zip,
+}
+
+#[derive(Debug)]
+struct Mod {
+    pub path: PathBuf,
+    pub id: String,
+    pub r#type: ModType,
+    // TODO: Should we do a bunch a more full metadata? Stuff like author, name, desc, deps?
+}
+
+#[derive(Debug)]
+struct Source {
+    pub path: PathBuf,
+    pub r#type: ModType,
+}
 /// Patch file with preloaded TOML content and referenced sources
 #[derive(Debug)]
 struct IntermediatePatch {
@@ -28,7 +52,7 @@ fn filename_cmp(first: &Path, second: &Path) -> Ordering {
 }
 
 /// Load patch files from the specified mod directory.
-fn get_dir_patches(mod_dir: &Path) -> Result<(PathBuf, Vec<IntermediatePatch>)> {
+fn get_dir_patches(mod_dir: &Path) -> Result<(Source, Vec<IntermediatePatch>)> {
     let lovely_toml = mod_dir.join("lovely.toml");
     let lovely_dir = mod_dir.join("lovely");
     let mut toml_files = Vec::new();
@@ -59,6 +83,7 @@ fn get_dir_patches(mod_dir: &Path) -> Result<(PathBuf, Vec<IntermediatePatch>)> 
             let mut sources: HashMap<PathBuf, String> = HashMap::new();
             let file_identifier = format!("{:?}", toml_path);
             if let Ok(patch_file) = parse_patch_file(&content, &file_identifier, mod_dir) {
+
                 for patch in &patch_file.patches {
                     match patch {
                         Patch::Module(x) => {
@@ -89,11 +114,14 @@ fn get_dir_patches(mod_dir: &Path) -> Result<(PathBuf, Vec<IntermediatePatch>)> 
         })
         .collect::<Result<Vec<IntermediatePatch>>>()?;
 
-    Ok((mod_dir.to_path_buf(), intermediate_patches))
+    Ok((
+            Source { path: mod_dir.to_path_buf(), r#type: ModType::Dir },
+            intermediate_patches
+    ))
 }
 
 /// Load patch files from the specified zip.
-fn get_zip_patches(zip_file: &Path) -> Result<(PathBuf, Vec<IntermediatePatch>)> {
+fn get_zip_patches(zip_file: &Path) -> Result<Option<(Source, Vec<IntermediatePatch>)>> {
     let file = fs::File::open(zip_file)
         .with_context(|| format!("Failed to open zip file at {:?}", zip_file))?;
     let mut zip = ZipArchive::new(file)
@@ -125,7 +153,7 @@ fn get_zip_patches(zip_file: &Path) -> Result<(PathBuf, Vec<IntermediatePatch>)>
             Some(v) => v,
             None => {
                 log::warn!("No mod root found in zip {:?}. This may happen if the mod does not contain any lovely patches (uses another loader)", zip_file);
-                return Ok((zip_file.to_path_buf(), Vec::new()));
+                return Ok(None);
             },
     };
 
@@ -224,7 +252,48 @@ fn get_zip_patches(zip_file: &Path) -> Result<(PathBuf, Vec<IntermediatePatch>)>
         })
         .collect();
 
-    Ok((zip_file.to_path_buf(), intermediate_patches))
+    Ok(Some((
+            Source { path: zip_file.to_path_buf(), r#type: ModType::Zip },
+            intermediate_patches
+    )))
+}
+
+#[derive(Debug)]
+struct RawPatchData {
+    patch: Patch,
+    priority: Priority,
+    path: PathBuf,
+}
+
+#[derive(Debug)]
+pub struct RawPatches {
+    patches: Vec<(Mod, Vec<RawPatchData>)>,
+    vars: HashMap<String,String>,
+}
+
+fn to_base36(mut n: u64) -> String {
+    if n == 0 { return "0".into(); }
+    let mut s = Vec::new();
+    while n > 0 {
+        s.push(char::from_digit((n % 36).try_into().unwrap(), 36).unwrap());
+        n /= 36;
+    }
+    s.into_iter().rev().collect()
+}
+
+fn unique_id(set: &HashSet<String>, dir: &PathBuf) -> String {
+    let mut s = DefaultHasher::new();
+    seed.hash(&mut s);
+    dir.hash(&mut s);
+    let mut key;
+    loop {
+        key = format!("!{}", to_base36(s.finish())).to_uppercase();
+        if !set.contains(&key) {
+            break
+        }
+        key.hash(&mut s);
+    }
+    return key;
 }
 
 /// Load patches from the provided mod directory. This scans for lovely patch files
@@ -234,7 +303,7 @@ fn get_zip_patches(zip_file: &Path) -> Result<(PathBuf, Vec<IntermediatePatch>)>
 /// 
 /// Zip archives are supported and uniquely support directory nesting 
 /// (i.e., mod.zip/dir/lovely.toml), but otherwise are treated the same as dir mods.
-pub fn load_patches_new(mod_dir: &Path) -> Result<Vec<(Patch, Priority, PathBuf, HashMap<String, String>)>> {
+pub fn load_patches_new(mod_dir: &Path) -> Result<RawPatches> {
     let blacklist_file = mod_dir.join("lovely").join("blacklist.txt");
 
     let mut blacklist: HashSet<String> = HashSet::new();
@@ -266,7 +335,7 @@ pub fn load_patches_new(mod_dir: &Path) -> Result<Vec<(Patch, Priority, PathBuf,
         .collect_vec();
 
     // Collect directory patches (read TOMLs into IntermediatePatch)
-    let dir_results: Vec<(PathBuf, Vec<IntermediatePatch>)> = mod_contents
+    let dir_results: Vec<(Source, Vec<IntermediatePatch>)> = mod_contents
         .iter()
         .filter(|x| x.is_dir())
         .filter(|x| {
@@ -285,7 +354,7 @@ pub fn load_patches_new(mod_dir: &Path) -> Result<Vec<(Patch, Priority, PathBuf,
         .collect::<Result<Vec<_>>>()?;
 
     // Collect zip patches (read TOMLs into IntermediatePatch)
-    let zip_results: Vec<(PathBuf, Vec<IntermediatePatch>)> = mod_contents
+    let zip_results: Vec<Option<(Source, Vec<IntermediatePatch>)>> = mod_contents
         .iter()
         .filter(|x| x.is_file())
         .filter(|x| x.extension().is_some_and(|ext| ext == "zip"))
@@ -293,16 +362,28 @@ pub fn load_patches_new(mod_dir: &Path) -> Result<Vec<(Patch, Priority, PathBuf,
         .map(|x| get_zip_patches(x))
         .collect::<Result<Vec<_>>>()?;
 
+    let zip_results = zip_results
+        .into_iter()
+        .filter_map(|x| x);
+
+
     // Parse TOML contents into PatchFile structures
-    let mut patches: Vec<(Patch, Priority, PathBuf, HashMap<String, String>)> = Vec::new();
+    let mut patches: Vec<(Mod, Vec<RawPatchData>)> = Vec::new();
+
+    let mut var_table: HashMap<String, String> = HashMap::new();
 
     // Handle all patch files using preloaded sources
     let all_results = dir_results.into_iter().chain(zip_results.into_iter());
 
-    for (base_path, ips) in all_results {
+    for (source, ips) in all_results {
+        let mut mod_ids: HashSet<String> = HashSet::new();
+        let mut metadata: Option<(String, ModMetadata)> = None;
+        let mut this_patches: Vec<RawPatchData> = Vec::new();
+        let mut this_vars: HashMap<String, String> = HashMap::new();
         for ip in ips {
             let file_identifier = format!("{:?}", ip.path);
-            let mut patch_file: PatchFile = parse_patch_file(&ip.content, &file_identifier, &base_path)?;
+            let mut patch_file: PatchFile = parse_patch_file(&ip.content, &file_identifier, &source.path)?;
+            info!("{:?} {:?}", source, patch_file.metadata);
 
             // For module and copy patches, use preloaded sources
             for patch in &mut patch_file.patches {
@@ -340,6 +421,7 @@ pub fn load_patches_new(mod_dir: &Path) -> Result<Vec<(Patch, Priority, PathBuf,
             }
 
             let priority = patch_file.manifest.priority;
+
             let vars = patch_file.vars;
 
             // mod_relative_path: path relative to top-level mod_dir
@@ -349,57 +431,89 @@ pub fn load_patches_new(mod_dir: &Path) -> Result<Vec<(Patch, Priority, PathBuf,
                     mod_dir.display(),
                     ip.path.display()
                 )
-            })?;
+            })?.to_owned();
+
+            if let Some(md) = patch_file.metadata {
+                if let Some((other_path, _other_md)) = metadata {
+                    bail!("Mod at {:?} had mod metadata in multiple files! Mod metadata can only be set in one file per mod, please remove all but one of the metadata's:\nFirst: {:?}\nSecond: {}", source.path, mod_relative_path, other_path)
+                }
+                md.validate().with_context(|| format!("Invalid mod metadata at {:?}", mod_relative_path))?;
+                metadata = Some((format!("{:?}", mod_relative_path), md));
+            }
+
 
             let patches_vec = patch_file
                 .patches
                 .into_iter()
-                .map(|patch| (patch, priority, mod_relative_path.to_path_buf(), vars.clone()));
+                .map(|patch| RawPatchData {patch, priority, path: mod_relative_path.to_path_buf()});
 
-            patches.extend(patches_vec);
+            this_vars.extend(vars);
+            this_patches.extend(patches_vec);
         }
+        let r#mod = if let Some((_, md)) = metadata  {
+            if mod_ids.contains(&md.id) {
+                warn!("Two mods were found with the same id ({}). Mod at {} has been disabled", md.id, source.path.display());
+                continue;
+            }
+            Mod {
+                id: md.id, 
+                r#type: source.r#type,
+                path: source.path,
+            }
+        } else {
+            let id = unique_id(&mod_ids, &source.path);
+            Mod {
+                id: id, 
+                r#type: source.r#type,
+                path: source.path,
+            }
+        };
+        mod_ids.insert(r#mod.id.clone());
+        patches.push((r#mod, this_patches));
+        var_table.extend(this_vars);
     }
 
-    Ok(patches)
+    Ok(RawPatches{
+        patches,
+        vars: var_table,
+    })
 }
 
 /// Process raw patches to extract targets and consolidate variables
 pub fn process_patches(
-    raw_patches: Vec<(Patch, Priority, PathBuf, HashMap<String, String>)>,
+    raw_patches: RawPatches,
 ) -> (
-    Vec<(Patch, Priority, PathBuf)>,
-    HashSet<String>,
-    HashMap<String, String>,
+Vec<(Patch, Priority, PathBuf)>,
+HashSet<String>,
+HashMap<String, String>,
 ) {
     let mut targets: HashSet<String> = HashSet::new();
     let mut patches: Vec<(Patch, Priority, PathBuf)> = Vec::new();
-    let mut var_table: HashMap<String, String> = HashMap::new();
 
-    for (patch, priority, path, vars) in raw_patches {
-        // Extract targets from patches
-        match &patch {
-            Patch::Copy(x) => {
-                x.target.insert_into(&mut targets);
+    for (_, ps) in raw_patches.patches {
+        for raw_patch in ps {
+            // Extract targets from patches
+            match &raw_patch.patch {
+                Patch::Copy(x) => {
+                    x.target.insert_into(&mut targets);
+                }
+                Patch::Module(x) => {
+                    targets.insert(x.before.clone().unwrap_or_default());
+                }
+                Patch::Pattern(x) => {
+                    x.target.insert_into(&mut targets);
+                }
+                Patch::Regex(x) => {
+                    x.target.insert_into(&mut targets);
+                }
             }
-            Patch::Module(x) => {
-                targets.insert(x.before.clone().unwrap_or_default());
-            }
-            Patch::Pattern(x) => {
-                x.target.insert_into(&mut targets);
-            }
-            Patch::Regex(x) => {
-                x.target.insert_into(&mut targets);
-            }
+
+            // Add to final patches
+            patches.push((raw_patch.patch, raw_patch.priority, raw_patch.path));
         }
-
-        // Add to final patches
-        patches.push((patch, priority, path));
-
-        // Add variables (later ones override earlier ones)
-        var_table.extend(vars);
     }
 
-    (patches, targets, var_table)
+    (patches, targets, raw_patches.vars)
 }
 
 /// Parse TOML content into a PatchFile
@@ -435,15 +549,15 @@ mod tests {
     use zip::ZipWriter;
 
     const PATCH_TOML: &str = r#"
-[manifest]
-version = "1.0.0"
+        [manifest]
+        version = "1.0.0"
 
-[[patches]]
-[patches.copy]
-target = "main.lua"
-position = "append"
-sources = ["inject.lua"]
-"#;
+            [[patches]]
+            [patches.copy]
+                target = "main.lua"
+                    position = "append"
+                    sources = ["inject.lua"]
+                    "#;
 
     fn make_zip(temp: &TempDir, name: &str, files: &[(&str, &str)]) -> PathBuf {
         let path = temp.path().join(name);
@@ -582,25 +696,25 @@ sources = ["inject.lua"]
         let m = mods.join("mod");
         fs::create_dir_all(m.join("lovely")).unwrap();
         fs::write(m.join("lovely/patch1.toml"), r#"
-[manifest]
-version = "1.0.0"
+            [manifest]
+            version = "1.0.0"
 
-[[patches]]
-[patches.copy]
-target = "a.lua"
-position = "append"
-payload = "-- a"
-"#).unwrap();
+            [[patches]]
+            [patches.copy]
+            target = "a.lua"
+            position = "append"
+            payload = "-- a"
+            "#).unwrap();
         fs::write(m.join("lovely/patch2.toml"), r#"
-[manifest]
-version = "1.0.0"
+            [manifest]
+            version = "1.0.0"
 
-[[patches]]
-[patches.copy]
-target = "b.lua"
-position = "append"
-payload = "-- b"
-"#).unwrap();
+            [[patches]]
+            [patches.copy]
+            target = "b.lua"
+            position = "append"
+            payload = "-- b"
+            "#).unwrap();
 
         let patches = load_patches_new(mods).unwrap();
         assert_eq!(patches.len(), 2);
@@ -615,18 +729,18 @@ payload = "-- b"
         let m = mods.join("mod");
         fs::create_dir_all(&m).unwrap();
         fs::write(m.join("lovely.toml"), r#"
-[manifest]
-version = "1.0.0"
+            [manifest]
+            version = "1.0.0"
 
-[vars]
-FOO = "bar"
+            [vars]
+            FOO = "bar"
 
-[[patches]]
-[patches.copy]
-target = "game.lua"
-position = "append"
-payload = "-- hi"
-"#).unwrap();
+            [[patches]]
+            [patches.copy]
+            target = "game.lua"
+            position = "append"
+            payload = "-- hi"
+            "#).unwrap();
 
         let raw = load_patches_new(mods).unwrap();
         let (patches, targets, vars) = process_patches(raw);

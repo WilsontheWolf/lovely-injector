@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use anyhow::{ensure, Result, Context};
 
 pub use copy::CopyPatch;
 pub use module::ModulePatch;
@@ -27,11 +28,35 @@ pub struct Manifest {
     pub priority: Priority,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ModMetadata {
+    pub id: String
+}
+
+impl ModMetadata {
+    pub fn validate(&self) -> Result<()> {
+        self.validate_id().with_context(|| format!("Invalid ID: {:?}", self.id))?;
+        return Ok(());
+    }
+
+    pub fn validate_id(&self) -> Result<()> {
+        let len = self.id.len();
+        ensure!(len <= 128, "Metadata ID must be less than 128 characters in length");
+        ensure!(len >= 2, "Metadata ID must be more than 2 characters in length");
+        ensure!(self.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'), "Mod ID can only contain a-z A-Z 0-9 _ characters");
+        return Ok(());
+    }
+}
+
 // Represents a single .toml file after deserialization.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PatchFile {
     pub manifest: Manifest,
     pub patches: Vec<Patch>,
+    // A table of info about a mod
+    // limit one per set of patches in a mod.
+    #[serde(default)]
+    pub metadata: Option<ModMetadata>,
 
     // A table of variable name = value bindings. These are interpolated
     // into injected source code as the *last* step in the patching process.
